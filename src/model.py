@@ -3,6 +3,7 @@ from mesa import Model
 from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from simple_agent import SimplePedestrian
+from fire import StaticFire
 
 class EvacuationModel(Model):
     """
@@ -37,6 +38,9 @@ class EvacuationModel(Model):
         
         # Create agents
         self._create_agents()
+
+        # Create fire
+        self._place_fire()
         
         # Data collection - could add more metrics
         self.datacollector = DataCollector(
@@ -104,6 +108,19 @@ class EvacuationModel(Model):
             )
             
             self.space.place_agent(agent, (x, y))
+
+    def _place_fire(self):
+        """Create and place fire randomly in room."""
+        # Place agents randomly in left 75% of room
+        x = self.random.uniform(2.0, (self.width * 0.75) - 1.0)
+        y = self.random.uniform(1.0, self.height - 1.0)
+
+        fire = StaticFire(
+                model=self,
+                pos=(x, y)
+            )
+            
+        self.space.place_agent(fire, (x, y))
     
     def _calculate_density(self):
         """Calculate local density around exit."""

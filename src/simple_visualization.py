@@ -38,7 +38,7 @@ def simple_real_time_viz():
                 ax.set_xlim(-0.5, width + 0.5)
                 ax.set_ylim(-0.5, height + 0.5)
                 ax.set_aspect('equal')
-                ax.set_title(f'Evacuation - Step {step_count} - Agents: {len(model.agents)}', fontsize=14)
+                ax.set_title(f'Evacuation - Step {step_count} - Agents: {len(model.agents) - 1}', fontsize=14)
                 
                 # Draw room boundaries
                 ax.plot([0, width, width, 0, 0], [0, 0, height, height, 0], 'black', linewidth=3, label='Room walls')
@@ -84,7 +84,7 @@ def simple_real_time_viz():
                 
                 # Simple progress info
                 if step_count % 40 == 0:
-                    print(f"Step {step_count}: {len(model.agents)} agents remaining")
+                    print(f"Step {step_count}: {len(model.agents) - 1} agents remaining")
     
     except KeyboardInterrupt:
         print("Stopped by user.")
@@ -95,7 +95,7 @@ def simple_real_time_viz():
     finally:
         plt.ioff()
         print(f"\nSimulation complete!")
-        print(f"Agents evacuated: {model.n_agents - len(model.agents)}/{model.n_agents}")
+        print(f"Agents evacuated: {model.n_agents - len(model.agents) + 1}/{model.n_agents}")
         plt.show()
 
 if __name__ == "__main__":
