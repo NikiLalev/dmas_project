@@ -14,9 +14,10 @@ class SimplePedestrian(Agent):
     """
     
     def __init__(self, unique_id, model, pos, v0=1.3, tau=0.5, radius=0.2 , mass=80.0):
-        super().__init__(model)
+        super().__init__(unique_id, model)
         self.unique_id = unique_id  # agent_id
         self.x, self.y = pos  # (x, y) position
+        self._last_x, self._last_y = self.x, self.y
         self.vx, self.vy = 0.0, 0.0  # velocity (m/s)
         self.v0 = v0        # desired speed
         self.tau = tau      # adaptation time - how fast we correct - small means impatient / fast adaptation
@@ -75,7 +76,7 @@ class SimplePedestrian(Agent):
         
         # return the coordinates of the projected point
         return x0 + t * dx, y0 + t * dy
-    
+
     def driving_force(self):
         """
         Force pulling agent toward exit at desired speed.
@@ -83,52 +84,46 @@ class SimplePedestrian(Agent):
         Helbing equation: F_drive = m * (v_desired - v_current) / τ
         """
         gx, gy = self.nearest_exit_point()
-        e0 = _norm(np.array([gx - self.x, gy - self.y]))
-        # Calculate first component of Helbing acceleration equation (1)
-        vd = self.v0 * e0
+        e0 = self.desired_direction(gx, gy)
+        vd = self.desired_speed() * e0
         fx = self.m * ((vd[0] - self.vx) / self.tau)
         fy = self.m * ((vd[1] - self.vy) / self.tau)
         return fx, fy
     
-    def agent_repulsion(self):
+    def agent_repulsion(self, R=10.0):
         """Social force from other agents."""
         fx, fy = 0.0, 0.0
         
-        for other in self.model.agents:
-            # do not interact with self
-            if other is self:
+        for other in self.model.space.get_neighbors((self.x, self.y), R, include_center=False):
+            if other is self or not getattr(other, "is_pedestrian", False):
                 continue
             
             # this is d_ij in Helbing paper    
-            dx = self.x - other.x
-            dy = self.y - other.y
-            dist = np.linalg.norm([dx, dy])
+            dx, dy = self.x - other.x, self.y - other.y
+            d = math.hypot(dx, dy)
             
-            if dist < 1e-12:
+            if d < 1e-12:
                 continue
                 
             # Normal and tangent vectors
-            nij = np.array([dx / dist, dy / dist])
+            nij = np.array([dx/d, dy/d])
             tij = np.array([-nij[1], nij[0]])
             
             # sum of radii
             rij = self.r + other.r
             
             # Tanential velocity
-            dvij = np.array([other.vx - self.vx, other.vy - self.vy])
-            dvij_t = np.dot(dvij, tij)
+            dvij_t = np.dot(np.array([other.vx - self.vx, other.vy - self.vy]), tij)
             
             # Forces
             # Split the Helbing formula (2) into 3 parts for clarity by multiplying with nij
-            f_social = self.A * math.exp((rij - dist) / self.B) * nij
+            f_social = self.A * math.exp((rij - d) / self.B) * nij
             # below, we have max as per the defintion of g() to ensure 0 if no contact aka dist > rij
-            f_body = self.k * max(0, rij - dist) * nij
-            f_friction = self.kappa * max(0, rij - dist) * dvij_t * tij
+            f_body   = self.k * max(0.0, rij - d) * nij
+            f_fric   = self.kappa * max(0.0, rij - d) * dvij_t * tij
             
-            force = f_social + f_body + f_friction
-            fx += force[0]
-            fy += force[1]
-            
+            f = f_social + f_body + f_fric
+            fx += f[0]; fy += f[1]        
         return fx, fy
     
     def wall_repulsion(self):
@@ -212,6 +207,19 @@ class SimplePedestrian(Agent):
         
         # Return acceleration F = ma → a = F/m
         return fx / self.m, fy / self.m
+    
+    # --- hooks for extension ---
+    def pre_physics_update(self):
+        """Called at start of step before forces are computed (override in subclass)."""
+        pass
+
+    def desired_direction(self, gx, gy):
+        """Return normalized desired direction vector (override in subclass)."""
+        return _norm(np.array([gx - self.x, gy - self.y]))
+
+    def desired_speed(self):
+        """Return current desired speed (override in subclass)."""
+        return self.v0
 
     def step_rk4(self):
         """
@@ -227,6 +235,10 @@ class SimplePedestrian(Agent):
         
         if self.injured:
             return
+        
+        self._last_x, self._last_y = self.x, self.y
+        
+        self.pre_physics_update()  # hook
         
         # Current state
         x0, y0 = self.x, self.y
@@ -294,8 +306,8 @@ class SimplePedestrian(Agent):
         
         # Check for exit
         if self.has_exited():
-            self.model.agents.remove(self)
-            self.model.space.remove_agent(self)
+                self.model.space.remove_agent(self)
+                self.model.schedule.remove(self)
 
     def step_euler(self):
         """
@@ -310,6 +322,10 @@ class SimplePedestrian(Agent):
         
         if self.injured:
             return
+        
+        self._last_x, self._last_y = self.x, self.y
+        
+        self.pre_physics_update()  # hook
             
         # Calculate forces at current state only
         fx_drive, fy_drive = self.driving_force()
@@ -336,8 +352,8 @@ class SimplePedestrian(Agent):
         
         # Check for exit
         if self.has_exited():
-            self.model.agents.remove(self)
             self.model.space.remove_agent(self)
+            self.model.schedule.remove(self)
     
     def step(self):
         """
