@@ -15,7 +15,7 @@ class StaticFire(FixedAgent):
         self.x, self.y = pos
         self.vx, self.vy = 0.0, 0.0
         self.traversable = False    # cannot be crossed
-        self.radius = radius        # radius (m)
+        self.r = radius        # radius (m)
         self.color = "red"          # color for visualisation
 
     def get_position(self):
