@@ -2,14 +2,7 @@ import math
 import numpy as np
 from mesa import Agent
 from simple_agent import SimplePedestrian
-
-
-# --- utility ---
-def _norm(vec):
-    """Safe normalization of a 2D vector."""
-    n = np.linalg.norm(vec)
-    return vec / n if n > 1e-12 else vec
-
+from utils import _norm
 
 class ExtendedPedestrian(SimplePedestrian):
     def __init__(
