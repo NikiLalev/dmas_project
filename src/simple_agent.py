@@ -79,9 +79,12 @@ class SimplePedestrian(Agent):
         
         Helbing equation: F_drive = m * (v_desired - v_current) / τ
         """
-        gx, gy = self.nearest_exit_point()
-        e0 = self.desired_direction(gx, gy)
-        vd = self.desired_speed() * e0
+        e0 = getattr(self, "e0", None)
+        if e0 is None or np.linalg.norm(e0) < 1e-12:
+            # fallback to nearest exit if no direction set
+            gx, gy = self.nearest_exit_point()
+            e0 = self.desired_direction(gx, gy)
+        vd = self.v0 * e0
         fx = self.m * ((vd[0] - self.vx) / self.tau)
         fy = self.m * ((vd[1] - self.vy) / self.tau)
         return fx, fy
@@ -210,100 +213,103 @@ class SimplePedestrian(Agent):
         pass
 
     def desired_direction(self, gx, gy):
-        """Return normalized desired direction vector (override in subclass)."""
         return _norm(np.array([gx - self.x, gy - self.y]))
-
-    def desired_speed(self):
-        """Return current desired speed (override in subclass)."""
-        return self.v0
+    
+    def check_injury(self, fx_a, fy_a, fx_w, fy_w):
+        """
+        Check if pedestrian is injured due to excessive radial pressure.
+        fx_a, fy_a = agent repulsion forces
+        fx_w, fy_w = wall repulsion forces
+        """
+        # magnitude of radial forces only
+        F_radial = np.linalg.norm([fx_a + fx_w, fy_a + fy_w])
+        circumference = 2 * math.pi * self.r
+        pressure = F_radial / circumference
+        if pressure > 1600.0:  # threshold from Helbing et al.
+            self.injured = True
+            self.vx = 0.0
+            self.vy = 0.0
 
     def step_rk4(self):
         """
-        Execute one simulation time step using 4th-order Runge-Kutta integration. Better accuracy than Euler but more computationally expensive. Here forces are assumed to be time-invariant over the step.
-        
-        RK4 Method:
-        1. Calculate 4 slope estimates (k1, k2, k3, k4)
-        2. Combine with weights: (k1 + 2*k2 + 2*k3 + k4) / 6
-        3. Update position and velocity
-        4. Check for evacuation completion
+        One simulation time step using 4th-order Runge–Kutta.
+        We check injury once at the *current* state using contact forces,
+        then integrate with RK4 (forces must be recomputed at sub-states).
         """
         dt = self.model.dt
-        
+
+        # If already injured from a previous step, do nothing
         if self.injured:
             return
-        
+
+        # Keep last position (used by has_exited line-crossing)
         self._last_x, self._last_y = self.x, self.y
-        
-        self.pre_physics_update()  # hook
-        
-        # Current state
+
+        # Model-specific pre-update (ExtendedPedestrian updates e0, v0, panic, ...)
+        self.pre_physics_update()
+
+        # --- Contact forces ONCE at the current state (reuse for injury only) ---
+        fx_agent, fy_agent = self.agent_repulsion()
+        fx_wall,  fy_wall  = self.wall_repulsion()
+
+        # Injury check (may set self.injured = True)
+        self.check_injury(fx_agent, fy_agent, fx_wall, fy_wall)
+        if self.injured:
+            return
+
+        # --- RK4 integration (forces will be recomputed at sub-states inside calculate_acceleration) ---
         x0, y0 = self.x, self.y
         vx0, vy0 = self.vx, self.vy
-        
-        # k1: Evaluate at current state
+
+        # k1 at (x0, y0, vx0, vy0)
         ax1, ay1 = self.calculate_acceleration(x0, y0, vx0, vy0)
-        
-        k1_x, k1_y = vx0 * dt, vy0 * dt             # Position change : h*v
-        k1_vx, k1_vy = ax1 * dt, ay1 * dt           # Velocity change : h*a(x,v)
-        
-        # k2: Evaluate at midpoint using k1
-        
-        x_mid1 = x0 + k1_x / 2
-        y_mid1 = y0 + k1_y / 2
-        vx_mid1 = vx0 + k1_vx / 2
-        vy_mid1 = vy0 + k1_vy / 2
-        
+        k1_x,  k1_y  = vx0 * dt, vy0 * dt
+        k1_vx, k1_vy = ax1 * dt, ay1 * dt
+
+        # k2 at midpoint using k1
+        x_mid1  = x0  + 0.5 * k1_x
+        y_mid1  = y0  + 0.5 * k1_y
+        vx_mid1 = vx0 + 0.5 * k1_vx
+        vy_mid1 = vy0 + 0.5 * k1_vy
         ax2, ay2 = self.calculate_acceleration(x_mid1, y_mid1, vx_mid1, vy_mid1)
-        
-        k2_x, k2_y = vx_mid1 * dt, vy_mid1 * dt            # Position change : h*(v + k1_v/2)
-        k2_vx, k2_vy = ax2 * dt, ay2 * dt                  # Velocity change : h*a(x + k1_x/2, v + k1_v/2)
-        
-        
-        # k3: Evaluate at midpoint using k2
-        x_mid2 = x0 + k2_x / 2
-        y_mid2 = y0 + k2_y / 2
-        vx_mid2 = vx0 + k2_vx / 2
-        vy_mid2 = vy0 + k2_vy / 2
-        
+        k2_x,  k2_y  = vx_mid1 * dt, vy_mid1 * dt
+        k2_vx, k2_vy = ax2 * dt,  ay2 * dt
+
+        # k3 at midpoint using k2
+        x_mid2  = x0  + 0.5 * k2_x
+        y_mid2  = y0  + 0.5 * k2_y
+        vx_mid2 = vx0 + 0.5 * k2_vx
+        vy_mid2 = vy0 + 0.5 * k2_vy
         ax3, ay3 = self.calculate_acceleration(x_mid2, y_mid2, vx_mid2, vy_mid2)
+        k3_x,  k3_y  = vx_mid2 * dt, vy_mid2 * dt
+        k3_vx, k3_vy = ax3 * dt,  ay3 * dt
 
-        k3_x, k3_y = vx_mid2 * dt, vy_mid2 * dt            # Position change : h*(v + k2_v/2)
-        k3_vx, k3_vy = ax3 * dt, ay3 * dt                  # Velocity change : h*a(x + k2_x/2, v + k2_v/2)
-
-        # k4: Evaluate at endpoint using k3
-        x_end = x0 + k3_x
-        y_end = y0 + k3_y
+        # k4 at endpoint using k3
+        x_end  = x0  + k3_x
+        y_end  = y0  + k3_y
         vx_end = vx0 + k3_vx
         vy_end = vy0 + k3_vy
-        
         ax4, ay4 = self.calculate_acceleration(x_end, y_end, vx_end, vy_end)
-        
-        k4_x, k4_y = vx_end * dt, vy_end * dt              # Position change : h*(v + k3_v)
-        k4_vx, k4_vy = ax4 * dt, ay4 * dt                  # Velocity change : h*a(x + k3_x, v + k3_v)
-        
-        
-        # Combine slopes with RK4 weights: (k1 + 2*k2 + 2*k3 + k4) / 6
-        delta_vx = (k1_vx + 2*k2_vx + 2*k3_vx + k4_vx) / 6
-        delta_vy = (k1_vy + 2*k2_vy + 2*k3_vy + k4_vy) / 6
-        delta_x = (k1_x + 2*k2_x + 2*k3_x + k4_x) / 6
-        delta_y = (k1_y + 2*k2_y + 2*k3_y + k4_y) / 6
-        
-        # Update state
-        self.vx += delta_vx
-        self.vy += delta_vy
-        self.x += delta_x
-        self.y += delta_y
-        
-        # Speed limit
-        speed = np.sqrt(self.vx**2 + self.vy**2)
+        k4_x,  k4_y  = vx_end * dt, vy_end * dt
+        k4_vx, k4_vy = ax4 * dt,  ay4 * dt
+
+        # RK4 combination
+        self.vx += (k1_vx + 2.0*k2_vx + 2.0*k3_vx + k4_vx) / 6.0
+        self.vy += (k1_vy + 2.0*k2_vy + 2.0*k3_vy + k4_vy) / 6.0
+        self.x  += (k1_x  + 2.0*k2_x  + 2.0*k3_x  + k4_x ) / 6.0
+        self.y  += (k1_y  + 2.0*k2_y  + 2.0*k3_y  + k4_y ) / 6.0
+
+        # Speed cap
+        speed = math.hypot(self.vx, self.vy)
         if speed > 10.0:
-            self.vx = self.vx / speed * 10.0
-            self.vy = self.vy / speed * 10.0
-        
-        # Check for exit
+            s = 10.0 / speed
+            self.vx *= s
+            self.vy *= s
+
+        # Exit check (remove agent if crossed an exit segment)
         if self.has_exited():
-                self.model.space.remove_agent(self)
-                self.model.schedule.remove(self)
+            self.model.space.remove_agent(self)
+            self.model.schedule.remove(self)
 
     def step_euler(self):
         """
@@ -315,38 +321,44 @@ class SimplePedestrian(Agent):
         #     5. Check for evacuation completion
         """
         dt = self.model.dt
-        
+
+        # Already injured from previous steps → skip everything
         if self.injured:
             return
-        
+
         self._last_x, self._last_y = self.x, self.y
-        
-        self.pre_physics_update()  # hook
-            
-        # Calculate forces at current state only
-        fx_drive, fy_drive = self.driving_force()
+        self.pre_physics_update()
+
+        # Contact forces (used also for injury check)
         fx_agent, fy_agent = self.agent_repulsion()
-        fx_wall, fy_wall = self.wall_repulsion()
-        
-        # Total force as sum of components Helbing eq (1)
+        fx_wall,  fy_wall  = self.wall_repulsion()
+
+        # Injury check (may set self.injured = True)
+        self.check_injury(fx_agent, fy_agent, fx_wall, fy_wall)
+
+        # If injured during this step, stop here
+        if self.injured:
+            return
+
+        # Add driving force and integrate
+        fx_drive, fy_drive = self.driving_force()
         fx = fx_drive + fx_agent + fx_wall
         fy = fy_drive + fy_agent + fy_wall
-        
-        # Update velocity using F = m*a  => a = F/m  => dv/dt = F/m  => dv = (F/m)*dt (single step)
+
         self.vx += (fx / self.m) * dt
         self.vy += (fy / self.m) * dt
-        
-        # Speed limit
-        speed = np.sqrt(self.vx**2 + self.vy**2)
-        if speed > 10.0:  # Max speed (10 m/s)
+
+        # Speed cap
+        speed = math.hypot(self.vx, self.vy)
+        if speed > 10.0:
             self.vx = self.vx / speed * 10.0
             self.vy = self.vy / speed * 10.0
-        
-        # Update position using v = dx/dt  => dx = v*dt
+
+        # Update position
         self.x += self.vx * dt
         self.y += self.vy * dt
-        
-        # Check for exit
+
+        # Exit check
         if self.has_exited():
             self.model.space.remove_agent(self)
             self.model.schedule.remove(self)

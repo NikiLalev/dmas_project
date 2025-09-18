@@ -47,42 +47,50 @@ class ExtendedPedestrian(SimplePedestrian):
     
     # --- override hook methods from SimplePedestrian ---
     def pre_physics_update(self):
-        """Update panic and impatience before each step."""
-        self.compute_desired_direction()
-        self.update_impatience_and_speed()
+        """Update desired panic, direction, impatience and desired speed before each step."""
         self.update_panic()
+        gx, gy = self.nearest_exit_point()
+        self.e0 = self.desired_direction(gx, gy)
+        self.update_impatience_and_speed()
 
     def desired_direction(self, gx, gy):
         """Return blended direction based on exit, leaders, neighbors, or exploration."""
         if self.knows_exit or self.is_leader:
-            e0 = _norm(np.array([gx - self.x, gy - self.y]))
+            return _norm(np.array([gx - self.x, gy - self.y]))
+        e_ind = self.exploration_dir(gx, gy)
+        leader_dir = self.nearest_leader_dir()
+        if leader_dir is not None:
+            blend = (1.0 - self.panic) * e_ind + self.panic * leader_dir
         else:
-            e_ind = self.exploration_dir(gx, gy)
-            leader_dir = self.nearest_leader_dir()
-            if leader_dir is not None:
-                blend = (1.0 - self.panic) * e_ind + self.panic * leader_dir
-            else:
-                e_nb = self.neighbor_mean_desired_dir()
-                blend = (1.0 - self.panic) * e_ind + self.panic * e_nb
-            e0 = _norm(blend) if np.linalg.norm(blend) > 1e-12 else e_ind
-        self.e0 = e0
-        return e0
+            e_nb = self.neighbor_mean_desired_dir()
+            blend = (1.0 - self.panic) * e_ind + self.panic * e_nb
+        return _norm(blend) if np.linalg.norm(blend) > 1e-12 else e_ind
 
-    def desired_speed(self):
-        """Return impatience-modulated desired speed."""
-        return self.v0
+    def visibility_metrics(self):
+        """
+        Returns:
+        R_i      = effective visibility radius to be used in can_see (meters)
+        vis_term = term in [0,1] for panic update (0 = clear, 1 = no visibility)
 
-    def effective_visibility(self):
-        """Visibility radius (can be static or read from model's smoke field)."""
+        Convention:
+        - If the model exposes visibility_at(x,y), we assume it returns R_i (meters).
+        - Otherwise we use self.visibility_radius.
+        - vis_ref can be defined in the model; fallback is self.visibility_radius.
+        """
         if hasattr(self.model, "visibility_at"):
-            return float(self.model.visibility_at(self.x, self.y))
-        return self.visibility_radius
+            R_i = float(self.model.visibility_at(self.x, self.y))  # meters (radius)
+        else:
+            R_i = float(self.visibility_radius)
+
+        V_ref = float(getattr(self.model, "vis_ref", self.visibility_radius))
+        V_ref = max(V_ref, 1e-6)  # avoid division by zero
+        vis_term = float(np.clip(1.0 - (R_i / V_ref), 0.0, 1.0))
+        return R_i, vis_term
 
     def can_see(self, x, y):
-        return (
-            np.linalg.norm(np.array([x - self.x, y - self.y]))
-            <= self.effective_visibility()
-        )
+        """Check if a point (x,y) is within the effective visibility radius."""
+        R_i, _ = self.visibility_metrics()
+        return np.hypot(x - self.x, y - self.y) <= R_i
 
     def nearest_exit_point(self):
         """
@@ -130,7 +138,8 @@ class ExtendedPedestrian(SimplePedestrian):
             return np.array([math.cos(self.heading), math.sin(self.heading)])
 
     def neighbor_mean_desired_dir(self):
-        R = min(self.herding_radius, self.effective_visibility())
+        R, _ = self.visibility_metrics()
+        R = min(self.herding_radius, R)
         vec_sum = np.zeros(2)
         count = 0
         for n in self.model.space.get_neighbors(
@@ -149,7 +158,8 @@ class ExtendedPedestrian(SimplePedestrian):
 
     def nearest_leader_dir(self):
         """Return the e0 of the closest visible leader, or None if none are visible."""
-        R = min(self.herding_radius, self.effective_visibility())
+        R, _ = self.visibility_metrics()
+        R = min(self.herding_radius, R)
         closest = None
         min_dist = float("inf")
         for n in self.model.space.get_neighbors(
@@ -167,22 +177,6 @@ class ExtendedPedestrian(SimplePedestrian):
                     e_j0 = _norm(np.array([n.vx, n.vy]))
                 closest = e_j0
         return closest
-
-    def compute_desired_direction(self):
-        gx, gy = self.nearest_exit_point()
-        if self.knows_exit or self.is_leader:
-            e0 = self.known_exit_dir(gx, gy)
-        else:
-            e_ind = self.exploration_dir(gx, gy)
-            leader_dir = self.nearest_leader_dir()
-            if leader_dir is not None:
-                blend = (1.0 - self.panic) * e_ind + self.panic * leader_dir
-            else:
-                e_nb = self.neighbor_mean_desired_dir()
-                blend = (1.0 - self.panic) * e_ind + self.panic * e_nb
-            e0 = _norm(blend) if np.linalg.norm(blend) > 1e-12 else e_ind
-        self.e0 = e0
-        return e0
 
     def update_impatience_and_speed(self):
         """
@@ -206,42 +200,13 @@ class ExtendedPedestrian(SimplePedestrian):
         # update desired speed between relaxed v0_init and panic vmax
         self.v0 = (1.0 - self.impatience) * self.v0_init + self.impatience * self.vmax
 
-    def check_injury(self, fx_a, fy_a, fx_w, fy_w):
-        """
-        Check if pedestrian is injured due to excessive radial pressure.
-        fx_a, fy_a = agent repulsion forces
-        fx_w, fy_w = wall repulsion forces
-        """
-        # magnitude of radial forces only
-        F_radial = np.linalg.norm([fx_a + fx_w, fy_a + fy_w])
-        circumference = 2 * math.pi * self.r
-        pressure = F_radial / circumference
-        if pressure > 1600.0:  # threshold from Helbing et al.
-            self.injured = True
-            self.vx = 0.0
-            self.vy = 0.0
-
     def update_panic(self):
         """
-        Update panic p in [0,1]
-        p = 1 - (1 - p_base)*(1 - vis_term)*(1 - wait_term)
+        Update panic according to:
+        p = 1 - (1 - p_base) * (1 - vis_term), where vis_term comes from visibility_metrics() and is in [0,1].
         """
-        # visibility term in [0,1]: 0 = clear, 1 = no visibility
-        vis = self.effective_visibility()
-        vis_ref = max(1e-6, getattr(self.model, "vis_ref", self.visibility_radius))
-        vis_term = float(np.clip(1.0 - vis / vis_ref, 0.0, 1.0))
-
-        # waiting term in [0,1]: 0 = moving at v0_init, 1 = stuck
-        e_dir = self.e0 if np.linalg.norm(self.e0) > 1e-12 else np.array([0.0, 0.0])
-        v_vec = np.array([self.vx, self.vy])
-        v_parallel = max(0.0, float(np.dot(v_vec, e_dir)))
-        wait_term = float(
-            np.clip(1.0 - (v_parallel / max(self.v0_init, 1e-9)), 0.0, 1.0)
-        )
-
-        self.panic = 1.0 - (1.0 - self.panic_base) * (1.0 - vis_term) * (
-            1.0 - wait_term
-        )
+        _, vis_term = self.visibility_metrics()
+        self.panic = 1.0 - (1.0 - self.panic_base) * (1.0 - vis_term)
 
     def _ccw(self, ax, ay, bx, by, cx, cy):
         return (cy - ay) * (bx - ax) > (by - ay) * (cx - ax)
