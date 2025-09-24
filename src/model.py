@@ -3,7 +3,7 @@ from mesa import Model
 from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from simple_agent import SimplePedestrian
-from fire import StaticFire
+from fire import DynamicFire
 
 class EvacuationModel(Model):
     """
@@ -115,12 +115,15 @@ class EvacuationModel(Model):
         x = self.random.uniform(2.0, (self.width * 0.75) - 1.0)
         y = self.random.uniform(1.0, self.height - 1.0)
 
-        fire = StaticFire(
+        fire = DynamicFire(
                 model=self,
                 pos=(x, y)
             )
             
         self.space.place_agent(fire, (x, y))
+    
+        # reference to the object
+        self.fire = fire
     
     def _calculate_density(self):
         """Calculate local density around exit."""
