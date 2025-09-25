@@ -8,56 +8,79 @@ from matplotlib.figure import Figure
 from model import EvacuationModel
 from matplotlib.patches import Circle
 
-def agent_portrayal(agent):
-    r = float(getattr(agent, "r", 0.2))
-    print(f"Agent at ({agent.x:.2f}, {agent.y:.2f}), r={r:.2f}")
-    SCALE = 180.0
-    size = max(25.0, (SCALE * r) ** 2)
-    if getattr(agent, "is_fire", False):
-        return AgentPortrayalStyle(
-            x=float(agent.x), y=float(agent.y),
-            color="red", size=50,
-            edgecolors="black", linewidths=0.2,
-            marker="s"
-        )
-
-    if getattr(agent, "injured", False):
-        return AgentPortrayalStyle(
-            x=float(agent.x), y=float(agent.y),
-            color="red", size=size, alpha=0.95,
-            edgecolors="black", linewidths=0.4,
-            marker="X"
-        )
-
-    is_leader = bool(getattr(agent, "is_leader", False))
-    color = "tab:orange" if is_leader else "tab:blue"
-    return AgentPortrayalStyle(
-        x=float(agent.x), y=float(agent.y),
-        color=color, size=size, alpha=0.85,
-        edgecolors="black", linewidths=0.2,
-    )
-
 @solara.component
 def RoomSpace(model):
     update_counter.get()
     fig = Figure()
     ax = fig.add_subplot()
 
-    space = getattr(model, "grid", None) or getattr(model, "space", None)
-    draw_space(space, agent_portrayal, ax=ax)
+    # 1) Draw agents manually as circles with physical radius
+    # Try to get an iterable of agents in a robust way
+    if hasattr(model, "schedule") and getattr(model.schedule, "agents", None) is not None:
+        agents_iter = list(model.schedule.agents)
+    elif hasattr(model, "agents"):
+        agents_iter = list(model.agents)
+    else:
+        try:
+            agents_iter = list(model.space._agents)
+        except Exception:
+            agents_iter = []
 
+    # Draw each agent as a Circle patch using physical radius agent.r
+    for agent in agents_iter:
+        if getattr(agent, "is_fire", False):
+            continue
+
+        # read position and radius (fallback default)
+        x = float(getattr(agent, "x", 0.0))
+        y = float(getattr(agent, "y", 0.0))
+        r = float(getattr(agent, "r", 0.2))
+
+        # color / style choices
+        if getattr(agent, "injured", False):
+            face = "red"
+            edge = "black"
+            alpha = 0.95
+            z = 3.5
+            size = max(30, r)
+            ax.scatter([x], [y], s=size, marker='x', color='black',
+                       linewidths=1.2, zorder=5, alpha=0.95)
+        else:
+            face = "tab:orange" if getattr(agent, "is_leader", False) else "tab:blue"
+            edge = "black"
+            alpha = 0.85
+            z = 3.5
+
+        # Create circle in data coordinates (radius in same units as axis)
+        circ = Circle((x, y), r, facecolor=face, edgecolor=edge,
+                      linewidth=0.25, alpha=alpha, zorder=z)
+        ax.add_patch(circ)
+
+        # Add small marker for orientation or velocity (tiny line)
+        vx = getattr(agent, "vx", 0.0)
+        vy = getattr(agent, "vy", 0.0)
+        speed = (vx ** 2 + vy ** 2) ** 0.5
+        if speed > 1e-6:
+            # draw a short line showing heading, length scaled with radius
+            hx = x + (vx / speed) * r * 1.6
+            hy = y + (vy / speed) * r * 1.6
+            ax.plot([x, hx], [y, hy], color="black", linewidth=0.6, zorder=z + 0.1)
+
+    # 2) LAYER: fumo + fuoco (sotto agli agenti)
     fire = getattr(model, "fire", None)
     if fire is not None:
+        # fumo (semi-trasparente)
         smoke = Circle(
             (float(fire.x), float(fire.y)),
             float(fire.r_smoke),
             facecolor="gray",
             edgecolor="none",
             alpha=0.25,
-            zorder=0,
+            zorder=0,        # sotto gli agenti
         )
         ax.add_patch(smoke)
 
+        # fuoco (core rosso)
         core = Circle(
             (float(fire.x), float(fire.y)),
             float(fire.r),
@@ -65,16 +88,18 @@ def RoomSpace(model):
             edgecolor="black",
             linewidth=0.5,
             alpha=0.85,
-            zorder=1,
+            zorder=1,        # ancora sotto gli agenti (che sono ~2/3)
         )
         ax.add_patch(core)
 
+    # 3) Strutture
     for (x0, y0, x1, y1) in getattr(model, "walls", []):
         ax.plot([x0, x1], [y0, y1], color="black", linewidth=3, zorder=4, alpha=0.9)
 
     for (x0, y0, x1, y1) in getattr(model, "exits", []):
         ax.plot([x0, x1], [y0, y1], color="green", linewidth=6, zorder=4, alpha=0.9)
 
+    # 4) limiti/asse
     W, H = getattr(model, "width", None), getattr(model, "height", None)
     if W and H:
         ax.set_xlim(-0.5, W + 0.5)
