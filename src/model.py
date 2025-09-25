@@ -106,7 +106,7 @@ class EvacuationModel(Model):
                 pos=(x, y),
                 v0=v0,
                 tau=0.5,
-                radius=0.25 + self.random.uniform(0, 0.1),
+                radius = self.random.uniform(0.5, 1.0),
                 mass=80.0
             )
             

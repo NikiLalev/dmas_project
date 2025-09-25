@@ -9,7 +9,7 @@ class SimplePedestrian(Agent):
     Only core social force model - no leaders, panic, etc.
     """
     
-    def __init__(self, unique_id, model, pos, v0=1.3, tau=0.5, radius=0.2 , mass=80.0):
+    def __init__(self, unique_id, model, pos, v0=1.3, tau=0.5, radius=0.1 , mass=80.0):
         super().__init__(model)
         self.unique_id = unique_id  # agent_id
         self.x, self.y = pos  # (x, y) position
