@@ -50,7 +50,30 @@ def simple_real_time_viz():
                 # Draw exit
                 ax.plot([15, 15], [exit_start, exit_end], 'green', linewidth=6, label='EXIT')
                 
-                
+                # Draw fire and smoke
+                if hasattr(model, 'fire') and model.fire is not None:
+                    fire = model.fire
+
+                    # Draw smoke first (background)
+                    smoke_circle = plt.Circle(
+                        (fire.x, fire.y),
+                        fire.r_smoke,
+                        color=fire.smoke_color,
+                        alpha=0.3,    # semi-transparent
+                        fill=True
+                    )
+                    ax.add_patch(smoke_circle)
+
+                    # Draw fire core on top
+                    fire_circle = plt.Circle(
+                        (fire.x, fire.y),
+                        fire.r,
+                        color=fire.color,
+                        alpha=0.9,
+                        fill=True
+                    )
+                    ax.add_patch(fire_circle)
+
                 # Draw agents
                 if model.agents:
                     positions = model.get_agent_positions()
