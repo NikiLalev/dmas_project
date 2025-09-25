@@ -23,7 +23,7 @@
    python -c "import mesa, numpy, matplotlib; print('✅ Ready to go!')"
    ```
 
-*** Visualization
+### Visualization
 ```bash
 python -m solara run src\mesa_visualization.py
 ```
