@@ -4,6 +4,7 @@ from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from simple_agent import SimplePedestrian
 from fire import DynamicFire
+from mesa.agent import AgentSet
 
 class EvacuationModel(Model):
     """
@@ -18,8 +19,11 @@ class EvacuationModel(Model):
                  exit_width=1.2,
                  dt=0.01,
                  integration_method='rk4',
+                 vis_ref = 10.0,
                  seed=None):
         super().__init__(seed=seed)
+
+        self.agents = AgentSet(self.random)
         
         self.n_agents = n_agents
         self.width = width
@@ -27,6 +31,7 @@ class EvacuationModel(Model):
         self.exit_width = exit_width
         self.dt = dt
         self.integration_method = integration_method
+        self.vis_ref = vis_ref
         self.steps = 0
         self.running = True
         
@@ -94,7 +99,7 @@ class EvacuationModel(Model):
             y = self.random.uniform(2.0, self.height - 2.0)
 
             # Initial desired speed from normal distribution with mean 1.3 and std 0.2 in range [0.5, 2.0]
-            v0 = self.rng.normal(1.3, 0.2)
+            v0 = self.random.normalvariate(1.3, 0.2)
             v0 = max(0.5, min(2.0, v0))
             
             agent = SimplePedestrian(
@@ -108,6 +113,7 @@ class EvacuationModel(Model):
             )
             
             self.space.place_agent(agent, (x, y))
+            self.agents.add(agent)
 
     def _place_fire(self):
         """Create and place fire randomly in room."""
@@ -142,11 +148,30 @@ class EvacuationModel(Model):
                 
         return agents_near_exit / (np.pi * exit_area**2)
     
+    def visibility_at(self, x, y):
+        """Calculate visibility at position (x, y) considering fire and smoke."""
+        base = self.vis_ref
+        fire = getattr(self, "fire", None)
+        if fire is None:
+            return base
+
+        dx, dy = x - fire.x, y - fire.y
+        d = (dx*dx + dy*dy) ** 0.5
+
+        if d <= fire.r_smoke:
+            smoke_min = 2.0
+            return smoke_min + (base - smoke_min) * (d / max(fire.r_smoke, 1e-6))
+        return base
+    
     def step(self):
         """Advance the model by one step."""
-        self.datacollector.collect(self)
+
+        if hasattr(self, "fire") and self.fire is not None:
+            self.fire.step()
         
         self.agents.shuffle_do("step")
+
+        self.datacollector.collect(self)
         
         if len(self.agents) == 0:
             self.running = False

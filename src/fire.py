@@ -1,8 +1,8 @@
 import math
 import numpy as np
-from mesa.discrete_space import FixedAgent
+from mesa import Agent
 
-class StaticFire(FixedAgent):
+class StaticFire(Agent):
     """
     Static fire agent:
     - static position (x, y), zero velocity (vx, vy)
@@ -26,7 +26,7 @@ class StaticFire(FixedAgent):
         pass
 
 
-class DynamicFire(FixedAgent):
+class DynamicFire(Agent):
     """
     Dynamic fire agent:
     - static position (x, y), zero velocity (vx, vy)
@@ -72,4 +72,5 @@ class DynamicFire(FixedAgent):
         dx = pos[0] - self.x
         dy = pos[1] - self.y
         dist = math.sqrt(dx*dx + dy*dy)
-        return self.r < dist <= self.r
+        return self.r < dist <= self.r_smoke
+    

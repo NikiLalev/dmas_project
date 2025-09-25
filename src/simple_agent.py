@@ -158,13 +158,25 @@ class SimplePedestrian(Agent):
             
         return fx, fy
     
+    def _ccw(self, ax, ay, bx, by, cx, cy):
+        return (cy - ay) * (bx - ax) > (by - ay) * (cx - ax)
+
+    def _segments_intersect(self, p1, p2, q1, q2):
+        (ax, ay), (bx, by) = p1, p2
+        (cx, cy), (dx, dy) = q1, q2
+        return (self._ccw(ax, ay, cx, cy, dx, dy) != self._ccw(bx, by, cx, cy, dx, dy) and
+                self._ccw(ax, ay, bx, by, cx, cy) != self._ccw(ax, ay, bx, by, dx, dy))
+    
     def has_exited(self):
-        """Check if agent has reached exit."""
-        for (x0, y0, x1, y1) in self.model.exits:
-            gx, gy = self._project_to_line(self.x, self.y, x0, y0, x1, y1)
-            dist = np.linalg.norm([self.x - gx, self.y - gy])
-            # if dist < self.r then we are through the exit | if self.x > gx then agent is to the right of the exit, !!!note: this only works for exits on right side of room
-            if dist < self.r or self.x > gx:  # Passed through exit
+        x_prev = getattr(self, "_last_x", self.x)
+        y_prev = getattr(self, "_last_y", self.y)
+        p1 = (x_prev, y_prev)
+        p2 = (self.x, self.y)
+
+        for x0, y0, x1, y1 in self.model.exits:
+            q1 = (x0, y0)
+            q2 = (x1, y1)
+            if self._segments_intersect(p1, p2, q1, q2):
                 return True
         return False
     
@@ -309,7 +321,7 @@ class SimplePedestrian(Agent):
         # Exit check (remove agent if crossed an exit segment)
         if self.has_exited():
             self.model.space.remove_agent(self)
-            self.model.schedule.remove(self)
+            self.model.agents.remove(self)
 
     def step_euler(self):
         """
@@ -361,7 +373,7 @@ class SimplePedestrian(Agent):
         # Exit check
         if self.has_exited():
             self.model.space.remove_agent(self)
-            self.model.schedule.remove(self)
+            self.model.agents.remove(self)
     
     def step(self):
         """

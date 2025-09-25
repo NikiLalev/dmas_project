@@ -77,14 +77,14 @@ class ExtendedPedestrian(SimplePedestrian):
         - Otherwise we use self.visibility_radius.
         - vis_ref can be defined in the model; fallback is self.visibility_radius.
         """
+        cap = float(self.visibility_radius)
         if hasattr(self.model, "visibility_at"):
-            R_i = float(self.model.visibility_at(self.x, self.y))  # meters (radius)
+            env = float(self.model.visibility_at(self.x, self.y))  # local visibility
         else:
-            R_i = float(self.visibility_radius)
+            env = cap  # no visibility model, assume max visibility
 
-        V_ref = float(getattr(self.model, "vis_ref", self.visibility_radius))
-        V_ref = max(V_ref, 1e-6)  # avoid division by zero
-        vis_term = float(np.clip(1.0 - (R_i / V_ref), 0.0, 1.0))
+        R_i = min(cap, env)  # effective visibility radius
+        vis_term = float(np.clip(1.0 - (R_i / max(cap, 1e-6)), 0.0, 1.0))
         return R_i, vis_term
 
     def can_see(self, x, y):
@@ -207,25 +207,3 @@ class ExtendedPedestrian(SimplePedestrian):
         """
         _, vis_term = self.visibility_metrics()
         self.panic = 1.0 - (1.0 - self.panic_base) * (1.0 - vis_term)
-
-    def _ccw(self, ax, ay, bx, by, cx, cy):
-        return (cy - ay) * (bx - ax) > (by - ay) * (cx - ax)
-
-    def _segments_intersect(self, p1, p2, q1, q2):
-        (ax, ay), (bx, by) = p1, p2
-        (cx, cy), (dx, dy) = q1, q2
-        return (self._ccw(ax, ay, cx, cy, dx, dy) != self._ccw(bx, by, cx, cy, dx, dy) and
-                self._ccw(ax, ay, bx, by, cx, cy) != self._ccw(ax, ay, bx, by, dx, dy))
-
-    def has_exited(self):
-        x_prev = getattr(self, "_last_x", self.x)
-        y_prev = getattr(self, "_last_y", self.y)
-        p1 = (x_prev, y_prev)
-        p2 = (self.x, self.y)
-
-        for x0, y0, x1, y1 in self.model.exits:
-            q1 = (x0, y0)
-            q2 = (x1, y1)
-            if self._segments_intersect(p1, p2, q1, q2):
-                return True
-        return False
