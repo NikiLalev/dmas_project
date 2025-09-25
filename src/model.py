@@ -22,8 +22,6 @@ class EvacuationModel(Model):
                  vis_ref = 10.0,
                  seed=None):
         super().__init__(seed=seed)
-
-        self.agents = AgentSet(self.random)
         
         self.n_agents = n_agents
         self.width = width

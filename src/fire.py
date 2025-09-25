@@ -14,7 +14,7 @@ class StaticFire(Agent):
         super().__init__(model)
         self.x, self.y = pos
         self.vx, self.vy = 0.0, 0.0
-
+        self.is_fire = True
         self.traversable = False    # cannot be crossed
         self.r = radius        # radius (m)
         self.color = "red"          # color for visualisation
@@ -39,7 +39,7 @@ class DynamicFire(Agent):
         super().__init__(model)
         self.x, self.y = pos
         self.vx, self.vy = 0.0, 0.0
-
+        self.is_fire = True
         self.r = initial_fire_radius      # fire radius (m)
         self.traversable = False               # cannot be crossed
         self.color = "red"                     # color for visualisation
@@ -57,20 +57,12 @@ class DynamicFire(Agent):
         self.r_smoke += self.smoke_growth_rate
         print(f"Step {self.model.steps}: Fire core = {self.r:.2f}, Smoke = {self.r_smoke:.2f}")
 
-    def is_inside_fire(self, pos):
+    def is_inside_fire(self, pos, agent_radius=0.0):
         """
-        Check if a given position is inside the fire area.
-        """
-        dx = pos[0] - self.x
-        dy = pos[1] - self.y
-        return math.sqrt(dx*dx + dy*dy) <= self.r
-
-    def is_inside_smoke(self, pos):
-        """
-        Check if a given position is inside the smoke area but NOT inside the fire.
+        Check if a given position is inside or touching the fire area.
+        Takes into account the radius of the agent.
         """
         dx = pos[0] - self.x
         dy = pos[1] - self.y
         dist = math.sqrt(dx*dx + dy*dy)
-        return self.r < dist <= self.r_smoke
-    
+        return dist <= (self.r + agent_radius)

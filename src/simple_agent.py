@@ -10,7 +10,7 @@ class SimplePedestrian(Agent):
     """
     
     def __init__(self, unique_id, model, pos, v0=1.3, tau=0.5, radius=0.2 , mass=80.0):
-        super().__init__(unique_id, model)
+        super().__init__(model)
         self.unique_id = unique_id  # agent_id
         self.x, self.y = pos  # (x, y) position
         self._last_x, self._last_y = self.x, self.y
@@ -229,15 +229,23 @@ class SimplePedestrian(Agent):
     
     def check_injury(self, fx_a, fy_a, fx_w, fy_w):
         """
-        Check if pedestrian is injured due to excessive radial pressure.
-        fx_a, fy_a = agent repulsion forces
-        fx_w, fy_w = wall repulsion forces
+        Check if pedestrian is injured:
+        - due to radial pressure (Helbing et al.)
+        - if the pedestrian enters the fire area
         """
-        # magnitude of radial forces only
+        # 1) Injury from radial pressure
         F_radial = np.linalg.norm([fx_a + fx_w, fy_a + fy_w])
         circumference = 2 * math.pi * self.r
         pressure = F_radial / circumference
         if pressure > 1600.0:  # threshold from Helbing et al.
+            self.injured = True
+            self.vx = 0.0
+            self.vy = 0.0
+            return  # already injured, stop here
+
+        # 2) Injury from fire contact
+        fire = getattr(self.model, "fire", None)
+        if fire and fire.is_inside_fire((self.x, self.y), self.r):
             self.injured = True
             self.vx = 0.0
             self.vy = 0.0
