@@ -6,8 +6,8 @@ from mesa.datacollection import DataCollector
 from networkx.classes import neighbors
 
 from simple_agent import SimplePedestrian
+from extended_agent import ExtendedPedestrian
 from fire import DynamicFire
-from mesa.agent import AgentSet
 
 
 class EvacuationModel(Model):
@@ -21,6 +21,8 @@ class EvacuationModel(Model):
                  width=20.0,
                  height=15.0,
                  exit_width=1.2,
+                 num_exits=1,
+                 num_leaders=1,
                  dt=0.01,
                  integration_method='rk4',
                  vis_ref=10.0,
@@ -31,6 +33,8 @@ class EvacuationModel(Model):
         self.width = width
         self.height = height
         self.exit_width = exit_width
+        self.num_exits = max(1, min(3, int(num_exits)))
+        self.num_leaders = max(0, min(self.n_agents, int(num_leaders)))
         self.dt = dt
         self.integration_method = integration_method
         self.vis_ref = vis_ref
@@ -44,7 +48,7 @@ class EvacuationModel(Model):
         self._create_geometry()
 
         # Create agents
-        self._create_agents()
+        self._create_extended_agents()
 
         # Create fire
         self._place_fire()
@@ -68,32 +72,116 @@ class EvacuationModel(Model):
         )
 
     def _create_geometry(self):
-        """Create walls and exits similar to Helbing's setup."""
-        # Room boundaries
-        self.walls = [
-            (0, 0, self.width, 0),  # Bottom wall
-            (0, self.height, self.width, self.height),  # Top wall
-            (0, 0, 0, self.height),  # Left wall
-            (self.width, 0, self.width, self.height),  # Right wall
-        ]
+        """Create random exits on the room perimeter and walls excluding those exits."""
+        W, H = self.width, self.height
+        w = self.exit_width
 
-        # Central wall with exit (like in Helbing paper)
-        wall_x = self.width * 0.75  # Wall position
-        exit_start = (self.height - self.exit_width) / 2
-        exit_end = exit_start + self.exit_width
+        exits = []  # list of (x0,y0,x1,y1)
+        attempts = 0
+        max_attempts = 200
+        min_gap = 0.4  # min gap between exits on same wall
 
-        # Add wall segments above and below exit
-        self.walls.extend([
-            (wall_x, 0, wall_x, exit_start),  # Wall below exit
-            (wall_x, exit_end, wall_x, self.height),  # Wall above exit
-        ])
+        def make_exit_segment(side, c0, c1):
+            if side == "bottom":  # y=0, x in [c0,c1]
+                return (c0, 0.0, c1, 0.0)
+            if side == "top":     # y=H, x in [c0,c1]
+                return (c0, H, c1, H)
+            if side == "left":    # x=0, y in [c0,c1]
+                return (0.0, c0, 0.0, c1)
+            if side == "right":   # x=W, y in [c0,c1]
+                return (W, c0, W, c1)
+            raise ValueError
 
-        # Define exit
-        self.exits = [
-            (wall_x, exit_start, wall_x, exit_end)
-        ]
+        sides = ["bottom", "top", "left", "right"]
+        safe_margin = 0.75  
 
-    def _create_agents(self):
+        chosen = []  # (side, start, end)
+
+        while len(chosen) < self.num_exits and attempts < max_attempts:
+            attempts += 1
+            side = self.random.choice(sides)
+            if side in ("bottom", "top"):
+                L = W
+            else:
+                L = H
+
+            if L <= w + 2 * safe_margin:
+                continue  # not enough space
+
+            start = self.random.uniform(safe_margin, L - safe_margin - w)
+            end = start + w
+
+            # no-overlap check
+            ok = True
+            for s2, a2, b2 in chosen:
+                if s2 != side:
+                    continue
+
+                if not (end + min_gap <= a2 or b2 + min_gap <= start):
+                    ok = False
+                    break
+            if not ok:
+                continue
+
+            chosen.append((side, start, end))
+
+        # fallback
+        for side, a, b in chosen:
+            exits.append(make_exit_segment(side, a, b))
+
+        self.exits = exits
+
+        # 2) Walls - the room perimeter minus the exits
+        def subtract_intervals(L, intervals):
+            """Return the complementary intervals in [0,L] after removing 'intervals'."""
+            intervals = sorted(intervals)
+            pieces = []
+            cur = 0.0
+            for s, e in intervals:
+                s = max(0.0, s); e = min(L, e)
+                if s > cur:
+                    pieces.append((cur, s))
+                cur = max(cur, e)
+            if cur < L:
+                pieces.append((cur, L))
+            return pieces
+
+        map_int = {"bottom": [], "top": [], "left": [], "right": []}
+        for (x0, y0, x1, y1) in self.exits:
+            if y0 == 0.0 and y1 == 0.0:                  # bottom
+                map_int["bottom"].append((min(x0, x1), max(x0, x1)))
+            elif y0 == H and y1 == H:                    # top
+                map_int["top"].append((min(x0, x1), max(x0, x1)))
+            elif x0 == 0.0 and x1 == 0.0:                # left
+                map_int["left"].append((min(y0, y1), max(y0, y1)))
+            elif x0 == W and x1 == W:                    # right
+                map_int["right"].append((min(y0, y1), max(y0, y1)))
+
+        walls = []
+
+        # bottom: y=0, x in [0,W]\exits
+        for s, e in subtract_intervals(W, map_int["bottom"]):
+            if e - s > 1e-9:
+                walls.append((s, 0.0, e, 0.0))
+
+        # top: y=H
+        for s, e in subtract_intervals(W, map_int["top"]):
+            if e - s > 1e-9:
+                walls.append((s, H, e, H))
+
+        # left: x=0, y in [0,H]
+        for s, e in subtract_intervals(H, map_int["left"]):
+            if e - s > 1e-9:
+                walls.append((0.0, s, 0.0, e))
+
+        # right: x=W
+        for s, e in subtract_intervals(H, map_int["right"]):
+            if e - s > 1e-9:
+                walls.append((W, s, W, e))
+
+        self.walls = walls
+
+    def _create_simple_agents(self):
         """Create and place agents randomly in left part of room."""
         max_attempts_per_agent = 300
         placement_margin = 0.02
@@ -162,6 +250,124 @@ class EvacuationModel(Model):
                     mass=80.0
                 )
 
+                self.space.place_agent(agent, (x, y))
+                self.agents.add(agent)
+
+    def _create_extended_agents(self):
+        """
+        Create and place agents randomly in the left part of the room, 
+        using ExtendedPedestrian with randomized parameters.
+        """
+        max_attempts_per_agent = 300
+        placement_margin = 0.02
+        max_other_r = 0.35
+
+        leader_ids = set(self.random.sample(range(self.n_agents), self.num_leaders)) if self.n_agents > 0 else set()
+
+        # number of available exits
+        n_exits = len(getattr(self, "exits", []))
+
+        for i in range(self.n_agents):
+            # base body radius with small random variability and mass randomization
+            mass = self.random.uniform(60.0, 100.0)
+            radius = 0.25 + self.random.uniform(0, 0.1)
+            attempts = 0
+            placed = False
+
+            # --- ExtendedPedestrian parameters (randomized where it makes sense) ---
+
+            # desired initial speed (truncated normal distribution)
+            v0 = self.random.normalvariate(1.3, 0.2)
+            v0 = max(0.5, min(2.0, v0))
+
+            # leader or follower
+            is_leader = i in leader_ids
+            knows_exit = bool(is_leader)  # leaders know an exit from the beginning
+
+            # leaders fix an exit, followers will discover dynamically
+            if is_leader and n_exits > 0:
+                exit_id = i % n_exits
+            else:
+                exit_id = None
+
+            # how strongly the agent follows nearby pedestrians
+            herding_radius = self.random.uniform(2.5, 6.0)
+
+            # personal visibility radius cap (environment may reduce it)
+            visibility_radius = self.random.uniform(5.0, 12.0)
+
+            # baseline panic predisposition
+            panic_base = self.random.uniform(0.0, 1.0)
+
+            # maximum speed when in panic
+            vmax = self.random.uniform(3.5, 5.0)
+
+            # Try multiple times to place without overlapping other agents
+            while attempts < max_attempts_per_agent and not placed:
+                attempts += 1
+
+                # random position in the left 3/4 of the room
+                margin = 0.5
+                x = self.random.uniform(margin, self.width - margin)
+                y = self.random.uniform(margin, self.height - margin)
+
+                query_radius = radius + max_other_r + placement_margin
+                if len(getattr(self.space, "agents", [])) > 0:
+                    nbs = self.space.get_neighbors((x, y), radius=query_radius, include_center=False)
+                else:
+                    nbs = []
+
+                # check collisions with existing agents
+                conflict = False
+                for nb in nbs:
+                    nb_r = float(getattr(nb, "r", 0.0))
+                    dx = x - nb.x
+                    dy = y - nb.y
+                    dist = math.hypot(dx, dy)
+                    if dist < (radius + nb_r + placement_margin):
+                        conflict = True
+                        break
+
+                # if no conflicts, place agent
+                if not conflict:
+                    agent = ExtendedPedestrian(
+                        unique_id=i,
+                        model=self,
+                        pos=(x, y),
+                        v0=v0,
+                        tau=0.5,
+                        radius=radius,
+                        mass=mass,
+                        knows_exit=knows_exit,
+                        herding_radius=herding_radius,
+                        is_leader=is_leader,
+                        exit_id=exit_id,
+                        visibility_radius=visibility_radius,
+                        panic=panic_base,
+                        vmax=vmax,
+                    )
+                    self.space.place_agent(agent, (x, y))
+                    self.agents.add(agent)
+                    placed = True
+
+            # fallback: if max attempts failed, still place the agent
+            if not placed:
+                agent = ExtendedPedestrian(
+                    unique_id=i,
+                    model=self,
+                    pos=(x, y),
+                    v0=v0,
+                    tau=0.5,
+                    radius=radius,
+                    mass=mass,
+                    knows_exit=knows_exit,
+                    herding_radius=herding_radius,
+                    is_leader=is_leader,
+                    exit_id=exit_id,
+                    visibility_radius=visibility_radius,
+                    panic=panic_base,
+                    vmax=vmax,
+                )
                 self.space.place_agent(agent, (x, y))
                 self.agents.add(agent)
 

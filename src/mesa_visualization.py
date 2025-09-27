@@ -116,16 +116,18 @@ flow_plot,   _ = make_mpl_plot_component("Exit_Flow", page=1)
 dens_plot,   _ = make_mpl_plot_component("Average_Density", page=1)
 
 model_params = {
+    "dt":         {"type": "SliderFloat", "value": 0.04, "min": 0.01,"max": 0.10,"step":0.005,"label": "Δt"},
     "n_agents":   {"type": "SliderInt",   "value": 40,   "min": 5,   "max": 200, "step": 5,   "label": "Agents"},
+    "num_leaders":{"type": "SliderInt",   "value": 1,    "min": 0,   "max": 10,  "step": 1,   "label": "Leaders"},
+    "num_exits":  {"type": "SliderInt",   "value": 1,    "min": 1,   "max": 3,   "step": 1,   "label": "Exits"},
     "width":      {"type": "SliderFloat", "value": 20.0, "min": 10., "max": 40., "step": 1.,  "label": "Room width"},
     "height":     {"type": "SliderFloat", "value": 15.0, "min":  8., "max": 30., "step": 1.,  "label": "Room height"},
-    "dt":         {"type": "SliderFloat", "value": 0.04, "min": 0.01,"max": 0.10,"step":0.005,"label": "Δt"},
     "exit_width": {"type": "SliderFloat", "value": 1.2,  "min": 0.4, "max": 3.0, "step": 0.1, "label": "Exit width"},
 }
 
 viz = SolaraViz(
     EvacuationModel(
-        n_agents=40, width=20, height=15, dt=0.04, exit_width=1.2
+        n_agents=40, width=20, height=15, dt=0.04, exit_width=1.2, num_exits=1
     ),
     components=[RoomSpace, agents_plot, speed_plot, flow_plot, dens_plot],
     model_params=model_params,
