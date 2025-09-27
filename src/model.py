@@ -26,6 +26,7 @@ class EvacuationModel(Model):
                  dt=0.01,
                  integration_method='rk4',
                  vis_ref=10.0,
+                 smoke_exposure_threshold=15.0,
                  seed=None):
         super().__init__(seed=seed)
 
@@ -37,6 +38,7 @@ class EvacuationModel(Model):
         self.num_leaders = max(0, min(self.n_agents, int(num_leaders)))
         self.dt = dt
         self.integration_method = integration_method
+        self.smoke_exposure_threshold = float(smoke_exposure_threshold)
         self.vis_ref = vis_ref
         self.steps = 0
         self.running = True
@@ -302,6 +304,8 @@ class EvacuationModel(Model):
             # maximum speed when in panic
             vmax = self.random.uniform(3.5, 5.0)
 
+            smoke_recovery_rate = self.random.uniform(0.05, 0.2)
+
             # Try multiple times to place without overlapping other agents
             while attempts < max_attempts_per_agent and not placed:
                 attempts += 1
@@ -338,6 +342,7 @@ class EvacuationModel(Model):
                         tau=0.5,
                         radius=radius,
                         mass=mass,
+                        smoke_recovery_rate=smoke_recovery_rate,
                         knows_exit=knows_exit,
                         herding_radius=herding_radius,
                         is_leader=is_leader,

@@ -14,6 +14,7 @@ class ExtendedPedestrian(SimplePedestrian):
         tau=0.5,
         radius=0.3,
         mass=80.0,
+        smoke_recovery_rate=0.1,
         knows_exit=False,
         herding_radius=3.0,
         is_leader=False,
@@ -23,7 +24,7 @@ class ExtendedPedestrian(SimplePedestrian):
         vmax=5.0,
         alpha_imp=0.2,
     ):
-        super().__init__(unique_id, model, pos, v0, tau, radius, mass)
+        super().__init__(unique_id, model, pos, v0, tau, radius, mass, smoke_recovery_rate)
 
         # --- extra attributes ---
         self.heading = np.random.uniform(0, 2 * math.pi)

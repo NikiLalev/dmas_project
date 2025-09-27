@@ -9,7 +9,7 @@ class SimplePedestrian(Agent):
     Only core social force model - no leaders, panic, etc.
     """
     
-    def __init__(self, unique_id, model, pos, v0=1.3, tau=0.5, radius=0.1 , mass=80.0):
+    def __init__(self, unique_id, model, pos, v0=1.3, tau=0.5, radius=0.1 , mass=80.0, smoke_recovery_rate=0.1):
         super().__init__(model)
         self.unique_id = unique_id  # agent_id
         self.x, self.y = pos  # (x, y) position
@@ -28,6 +28,9 @@ class SimplePedestrian(Agent):
         
         self.is_pedestrian = True
         self.injured = False
+
+        self.smoke_exposure = 0.0
+        self.smoke_recovery_rate = smoke_recovery_rate  # rate at which smoke exposure decreases per step
         
     def nearest_exit_point(self):
         """Find nearest point on any exit."""
@@ -227,11 +230,24 @@ class SimplePedestrian(Agent):
     def desired_direction(self, gx, gy):
         return _norm(np.array([gx - self.x, gy - self.y]))
     
+    def update_smoke_exposure(self):
+        """Accumulate exposure when inside smoke; recover using the agent's own rate when in clean air."""
+        fire = getattr(self.model, "fire", None)
+        dt = float(self.model.dt)
+
+        if fire and fire.is_inside_smoke((self.x, self.y), self.r):
+            density = float(getattr(fire, "smoke_density", 1.0))
+            self.smoke_exposure += dt * max(0.0, density)
+        else:
+            if self.smoke_recovery_rate > 0.0:
+                self.smoke_exposure = max(0.0, self.smoke_exposure - self.smoke_recovery_rate * dt)
+    
     def check_injury(self, fx_a, fy_a, fx_w, fy_w):
         """
         Check if pedestrian is injured:
         - due to radial pressure (Helbing et al.)
         - if the pedestrian enters the fire area
+        - if smoke exposure exceeds threshold
         """
         # 1) Injury from radial pressure
         F_radial = np.linalg.norm([fx_a + fx_w, fy_a + fy_w])
@@ -239,16 +255,21 @@ class SimplePedestrian(Agent):
         pressure = F_radial / circumference
         if pressure > 1600.0:  # threshold from Helbing et al.
             self.injured = True
-            self.vx = 0.0
-            self.vy = 0.0
+            self.vx = 0.0; self.vy = 0.0
             return  # already injured, stop here
 
         # 2) Injury from fire contact
         fire = getattr(self.model, "fire", None)
         if fire and fire.is_inside_fire((self.x, self.y), self.r):
             self.injured = True
-            self.vx = 0.0
-            self.vy = 0.0
+            self.vx = 0.0; self.vy = 0.0
+            return
+
+        # 3) Prolonged exposure to smoke
+        thr = float(getattr(self.model, "smoke_exposure_threshold", float("inf")))
+        if self.smoke_exposure >= thr:
+            self.injured = True
+            self.vx = 0.0; self.vy = 0.0
 
     def step_rk4(self):
         """
@@ -267,6 +288,8 @@ class SimplePedestrian(Agent):
 
         # Model-specific pre-update (ExtendedPedestrian updates e0, v0, panic, ...)
         self.pre_physics_update()
+
+        self.update_smoke_exposure()
 
         # --- Contact forces ONCE at the current state (reuse for injury only) ---
         fx_agent, fy_agent = self.agent_repulsion()
@@ -348,6 +371,8 @@ class SimplePedestrian(Agent):
 
         self._last_x, self._last_y = self.x, self.y
         self.pre_physics_update()
+
+        self.update_smoke_exposure()
 
         # Contact forces (used also for injury check)
         fx_agent, fy_agent = self.agent_repulsion()

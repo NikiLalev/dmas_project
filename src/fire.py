@@ -66,3 +66,13 @@ class DynamicFire(Agent):
         dy = pos[1] - self.y
         dist = math.sqrt(dx*dx + dy*dy)
         return dist <= (self.r + agent_radius)
+    
+    def is_inside_smoke(self, pos, agent_radius=0.0):
+        """
+        Check if a given position is inside or touching the smoke area.
+        Takes into account the radius of the agent.
+        """
+        dx = pos[0] - self.x
+        dy = pos[1] - self.y
+        dist = math.sqrt(dx*dx + dy*dy)
+        return dist <= (self.r_smoke + agent_radius)
