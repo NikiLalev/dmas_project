@@ -268,6 +268,7 @@ class EvacuationModel(Model):
 
         # number of available exits
         n_exits = len(getattr(self, "exits", []))
+        leader_assigned = 0
 
         for i in range(self.n_agents):
             # base body radius with small random variability and mass randomization
@@ -288,7 +289,8 @@ class EvacuationModel(Model):
 
             # leaders fix an exit, followers will discover dynamically
             if is_leader and n_exits > 0:
-                exit_id = i % n_exits
+                exit_id = leader_assigned % n_exits
+                leader_assigned += 1
             else:
                 exit_id = None
 
