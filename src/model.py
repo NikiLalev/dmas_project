@@ -298,7 +298,7 @@ class EvacuationModel(Model):
             herding_radius = self.random.uniform(2.5, 6.0)
 
             # personal visibility radius cap (environment may reduce it)
-            visibility_radius = self.random.uniform(5.0, 12.0)
+            visibility_radius = self.random.uniform(3.0, 6.0)
 
             # baseline panic predisposition
             panic_base = self.random.uniform(0.0, 1.0)
