@@ -55,7 +55,15 @@ class DynamicFire(FixedAgent):
     
     def step(self): 
         self.r_smoke += self.smoke_growth_rate
-        print(f"Step {self.model.steps}: Fire core = {self.r:.2f}, Smoke = {self.r_smoke:.2f}")
+
+        # check density
+        for dx in np.linspace(-self.r_smoke, self.r_smoke, 5):
+            for dy in np.linspace(-self.r_smoke, self.r_smoke, 5):
+                pos = (self.x + dx, self.y + dy)
+                density = self.get_smoke_density_at(pos)
+                if density > 0:
+                    print(f"Smoke at {pos} = {density:.2f}")
+
 
     def is_inside_fire(self, pos):
         """
@@ -73,3 +81,20 @@ class DynamicFire(FixedAgent):
         dy = pos[1] - self.y
         dist = math.sqrt(dx*dx + dy*dy)
         return self.r < dist <= self.r
+    
+    def get_smoke_density_at(self, pos):
+        """
+        Return smoke density at a given position.
+        Density is max near the fire core and decreases linearly to zero at the smoke radius.
+        """
+        dx = pos[0] - self.x
+        dy = pos[1] - self.y
+        dist = math.sqrt(dx*dx + dy*dy)
+        
+        if dist <= self.r:  # inside fire core
+            return 1.0
+        elif dist <= self.r_smoke:
+            # linear decay: from 1 at fire core to 0 at outer smoke boundary
+            return self.smoke_density * (1 - (dist - self.r) / (self.r_smoke - self.r))
+        else:
+            return 0.0  # outside smoke
