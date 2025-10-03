@@ -56,14 +56,6 @@ class DynamicFire(FixedAgent):
     def step(self): 
         self.r_smoke += self.smoke_growth_rate
 
-        # check density
-        for dx in np.linspace(-self.r_smoke, self.r_smoke, 5):
-            for dy in np.linspace(-self.r_smoke, self.r_smoke, 5):
-                pos = (self.x + dx, self.y + dy)
-                density = self.get_smoke_density_at(pos)
-                if density > 0:
-                    print(f"Smoke at {pos} = {density:.2f}")
-
 
     def is_inside_fire(self, pos):
         """
