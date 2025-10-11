@@ -36,14 +36,26 @@ class ExtendedPedestrian(SimplePedestrian):
         self.visibility_radius = visibility_radius
 
         # speed / impatience dynamics
-        self.v0_init = v0
-        self.vmax = vmax
+        if is_leader:
+            self.v0_init = 0.5
+            self.vmax = 1.0
+        else:
+            self.v0_init = v0
+            self.vmax = vmax
         self.impatience = 0.0
         self.alpha_imp = alpha_imp
 
         # panic dynamics
         self.panic = panic
         self.panic_base = panic
+
+        self.leader_radius = 15.0
+
+        self.follow_target_id = None   # currently latched leader id (or None)
+        self.follow_timer = 0.0        # seconds left to keep current latch even if leader not seen
+        self.follow_min_time = 1.0     # minimum latch duration (seconds)
+        self.follow_bias = 0.35
+        self.last_follow_dir = np.zeros(2)
 
     
     # --- override hook methods from SimplePedestrian ---
@@ -55,17 +67,58 @@ class ExtendedPedestrian(SimplePedestrian):
         self.update_impatience_and_speed()
 
     def desired_direction(self, gx, gy):
-        """Return blended direction based on exit, leaders, neighbors, or exploration."""
+        """
+        Blend exploration with following a latched leader direction (if any).
+        Keep a baseline tendency to follow (follow_bias) even with low panic.
+        While latched, if the leader is temporarily unseen, keep using last_follow_dir
+        until follow_timer expires.
+        """
+        dt = float(self.model.dt)
+
+        # Leaders or agents who already know the exit: head straight to exit
         if self.knows_exit or self.is_leader:
             return _norm(np.array([gx - self.x, gy - self.y]))
+
+        # Base exploration
         e_ind = self.exploration_dir(gx, gy)
-        leader_dir = self.nearest_leader_dir()
-        if leader_dir is not None:
-            blend = (1.0 - self.panic) * e_ind + self.panic * leader_dir
+
+        # Nearest leader (dir + id)
+        leader_dir, leader_id = self.nearest_leader_dir_with_id()
+
+        # Maintain/refresh latch
+        leader_dir_for_blend = None
+        if self.follow_target_id is not None:
+            # countdown latch
+            self.follow_timer = max(0.0, self.follow_timer - dt)
+
+            if leader_id == self.follow_target_id and leader_dir is not None:
+                # same leader still available -> refresh latch + use its direction
+                self.follow_timer = max(self.follow_timer, self.follow_min_time)
+                self.last_follow_dir = leader_dir
+                leader_dir_for_blend = leader_dir
+            elif self.follow_timer > 0.0 and np.linalg.norm(self.last_follow_dir) > 1e-12:
+                # leader not visible now, but latch active -> keep last known leader dir
+                leader_dir_for_blend = self.last_follow_dir
+            else:
+                # latch expired
+                self.follow_target_id = None
+                self.last_follow_dir = np.zeros(2)
+
+        # If no active latch, latch now if a leader is available
+        if self.follow_target_id is None and leader_dir is not None:
+            self.follow_target_id = leader_id
+            self.follow_timer = self.follow_min_time
+            self.last_follow_dir = leader_dir
+            leader_dir_for_blend = leader_dir
+
+        # Blend
+        if leader_dir_for_blend is not None:
+            # baseline follow even with low panic
+            follow_w = self.follow_bias + (1.0 - self.follow_bias) * float(self.panic)
+            return _norm((1.0 - follow_w) * e_ind + follow_w * leader_dir_for_blend)
         else:
             e_nb = self.neighbor_mean_desired_dir()
-            blend = (1.0 - self.panic) * e_ind + self.panic * e_nb
-        return _norm(blend) if np.linalg.norm(blend) > 1e-12 else e_ind
+            return _norm((1.0 - self.panic) * e_ind + self.panic * e_nb)
 
     def visibility_metrics(self):
         """
@@ -157,27 +210,33 @@ class ExtendedPedestrian(SimplePedestrian):
             count += 1
         return _norm(vec_sum) if count > 0 else np.zeros(2)
 
-    def nearest_leader_dir(self):
-        """Return the e0 of the closest visible leader, or None if none are visible."""
-        R, _ = self.visibility_metrics()
-        R = min(self.herding_radius, R)
-        closest = None
-        min_dist = float("inf")
-        for n in self.model.space.get_neighbors(
-            (self.x, self.y), R, include_center=False
-        ):
-            if n is self or not getattr(n, "is_pedestrian", False) or not n.is_leader:
+    def nearest_leader_dir_with_id(self):
+        """Return (dir, leader_id) for the nearest leader within leader_radius, ignoring visibility."""
+        R = float(getattr(self, "leader_radius", 12.0))
+        best_dir, best_id, best_d = None, None, float("inf")
+
+        for n in self.model.space.get_neighbors((self.x, self.y), R, include_center=False):
+            if n is self or not getattr(n, "is_pedestrian", False) or not getattr(n, "is_leader", False):
                 continue
-            if not self.can_see(n.x, n.y):
+            if getattr(n, "injured", False):
                 continue
-            d = np.linalg.norm([n.x - self.x, n.y - self.y])
-            if d < min_dist:
-                min_dist = d
-                e_j0 = getattr(n, "e0", None)
-                if e_j0 is None:
-                    e_j0 = _norm(np.array([n.vx, n.vy]))
-                closest = e_j0
-        return closest
+
+            d = math.hypot(n.x - self.x, n.y - self.y)
+
+            e_j0 = getattr(n, "e0", None)
+            if e_j0 is None or np.linalg.norm(e_j0) < 1e-9:
+                sp = (n.vx**2 + n.vy**2) ** 0.5
+                e_j0 = np.array([n.vx / sp, n.vy / sp]) if sp > 1e-6 else np.zeros(2)
+
+            if np.linalg.norm(e_j0) < 1e-12:
+                continue
+
+            if d < best_d:
+                best_d = d
+                best_dir = _norm(e_j0)
+                best_id = getattr(n, "unique_id", id(n))
+
+        return best_dir, best_id
 
     def update_impatience_and_speed(self):
         """
