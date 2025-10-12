@@ -3,7 +3,6 @@ import math
 from mesa import Model
 from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
-from networkx.classes import neighbors
 
 from simple_agent import SimplePedestrian
 from extended_agent import ExtendedPedestrian
@@ -20,7 +19,7 @@ class EvacuationModel(Model):
                  n_agents=200,
                  width=20.0,
                  height=15.0,
-                 exit_width=1.2,
+                 exit_width=2,
                  num_exits=1,
                  num_leaders=1,
                  dt=0.01,
@@ -49,6 +48,12 @@ class EvacuationModel(Model):
         # Define walls and exits (similar to Helbing's setup)
         self._create_geometry()
 
+        self.exit_counts = [0] * len(self.exits)
+        self.exit_counts_leaders = [0] * len(self.exits)
+        self.exit_counts_followers = [0] * len(self.exits)
+        self.exit_counts_step = [0] * len(self.exits)
+        self._prev_exit_counts = [0] * len(self.exits)
+
         # Create agents
         self._create_extended_agents()
 
@@ -58,18 +63,49 @@ class EvacuationModel(Model):
         # Data collection - could add more metrics
         self.datacollector = DataCollector(
             model_reporters={
-                "Agents": lambda m: len(m.agents),
-                "Average_Speed": lambda m: np.mean([np.sqrt(a.vx ** 2 + a.vy ** 2)
-                                                    for a in m.agents]) if m.agents else 0,
-                "Exit_Flow": lambda m: m.n_agents - len(m.agents),
-                "Average_Density": self._calculate_density,
+                "Agents": lambda m: sum(1 for a in m.agents if getattr(a, "is_pedestrian", False)),
+                "Average_Speed": lambda m: (
+                    np.mean([math.hypot(a.vx, a.vy) for a in m.agents if getattr(a, "is_pedestrian", False)])
+                    if any(getattr(a, "is_pedestrian", False) for a in m.agents) else 0
+                ),
+                "Exit_Flow_Total": lambda m: sum(m.exit_counts_step),
+                "Exit0_Flow": lambda m: (m.exit_counts_step[0] if len(m.exit_counts_step) > 0 else 0),
+                "Exit1_Flow": lambda m: (m.exit_counts_step[1] if len(m.exit_counts_step) > 1 else 0),
+                "Exit2_Flow": lambda m: (m.exit_counts_step[2] if len(m.exit_counts_step) > 2 else 0),
+                "Exit_Balance_Entropy": lambda m: (
+                    (lambda p: float(-np.sum([pi*np.log(pi) for pi in p if pi>0.0])) if sum(m.exit_counts)>0 else 0.0)
+                    ([c / max(1, sum(m.exit_counts)) for c in m.exit_counts])
+                ),
+                "Exit0_Pressure": lambda m: (m._mean_pressure_near_exit(0) if len(m.exits) > 0 else 0.0),
+                "Exit1_Pressure": lambda m: (m._mean_pressure_near_exit(1) if len(m.exits) > 1 else 0.0),
+                "Exit2_Pressure": lambda m: (m._mean_pressure_near_exit(2) if len(m.exits) > 2 else 0.0),
+                "Followers_Latched": lambda m: m._followers_latched(),
+                "Leaders_Remaining": lambda m: m._leaders_remaining(),
+                "Mean_VisTerm": lambda m: m._mean_vis_term(),
+                "Mean_SmokeExposure": lambda m: m._mean_smoke_exposure(),
+                "Injured_Total": lambda m: m._injured_counts()[0],
+                "Injured_Fire":  lambda m: m._injured_counts()[1],
+                "Injured_Smoke": lambda m: m._injured_counts()[2],
+                "Injured_Press": lambda m: m._injured_counts()[3],
+                "Std_v0_init": lambda m: m._diversity_stats()["std_v0_init"],
+                "Std_vmax":    lambda m: m._diversity_stats()["std_vmax"],
+                "Std_radius":  lambda m: m._diversity_stats()["std_radius"],
+                "Std_mass":    lambda m: m._diversity_stats()["std_mass"],
+                "Std_vis":     lambda m: m._diversity_stats()["std_vis"],
+                "Std_panic0":  lambda m: m._diversity_stats()["std_panic0"],
             },
             agent_reporters={
-                "x": "x",
-                "y": "y",
-                "vx": "vx",
-                "vy": "vy",
-                "Speed": lambda a: np.sqrt(a.vx ** 2 + a.vy ** 2),
+                "is_pedestrian": lambda a: getattr(a, "is_pedestrian", False),
+                "is_leader":     lambda a: getattr(a, "is_leader", False),
+                "injured":       lambda a: getattr(a, "injured", False),
+                "injury_cause":  lambda a: getattr(a, "injury_cause", None),
+                "knows_exit":    lambda a: getattr(a, "knows_exit", False),
+                "follow_target_id": lambda a: getattr(a, "follow_target_id", None),
+                "smoke_exposure":  lambda a: getattr(a, "smoke_exposure", 0.0),
+                "panic":           lambda a: getattr(a, "panic", 0.0),
+                "impatience":      lambda a: getattr(a, "impatience", 0.0),
+                "x": "x", "y": "y", "vx": "vx", "vy": "vy",
+                "Speed": lambda a: math.hypot(a.vx, a.vy),
             }
         )
 
@@ -182,6 +218,13 @@ class EvacuationModel(Model):
                 walls.append((W, s, W, e))
 
         self.walls = walls
+
+    def _register_exit(self, agent, exit_idx: int):
+        self.exit_counts[exit_idx] += 1
+        if getattr(agent, "is_leader", False):
+            self.exit_counts_leaders[exit_idx] += 1
+        else:
+            self.exit_counts_followers[exit_idx] += 1
 
     def _create_simple_agents(self):
         """Create and place agents randomly in left part of room."""
@@ -378,6 +421,8 @@ class EvacuationModel(Model):
                 self.space.place_agent(agent, (x, y))
                 self.agents.add(agent)
 
+            self.max_agent_radius = max(float(getattr(a, "r", 0.0)) for a in self.agents if getattr(a, "is_pedestrian", False)) if self.agents else 0.4
+
     def _place_fire(self):
         """Create and place fire randomly in room."""
         # Place agents randomly in left 75% of room
@@ -425,14 +470,88 @@ class EvacuationModel(Model):
             smoke_min = 2.0
             return smoke_min + (base - smoke_min) * (d / max(fire.r_smoke, 1e-6))
         return base
+    
+    def _agents_near_exit(self, exit_idx: int, radius=3.0):
+        x0, y0, x1, y1 = self.exits[exit_idx]
+        cx, cy = 0.5 * (x0 + x1), 0.5 * (y0 + y1)
+        out = []
+        for a in self.agents:
+            if not getattr(a, "is_pedestrian", False): 
+                continue
+            if math.hypot(a.x - cx, a.y - cy) <= radius:
+                out.append(a)
+        return out
+
+    def _pressure_of_agent(self, a):
+        fx_a, fy_a = a.agent_repulsion()
+        fx_w, fy_w = a.wall_repulsion()
+        F_radial = math.hypot(fx_a + fx_w, fy_a + fy_w)
+        circ = 2.0 * math.pi * a.r
+        return F_radial / circ if circ > 1e-9 else 0.0
+
+    def _mean_pressure_near_exit(self, exit_idx: int, radius=3.0):
+        agents = self._agents_near_exit(exit_idx, radius=radius)
+        if not agents:
+            return 0.0
+        vals = [self._pressure_of_agent(a) for a in agents]
+        return float(np.mean(vals))
+    
+    def _mean_vis_term(self):
+        vals = []
+        for a in self.agents:
+            if not getattr(a, "is_pedestrian", False): 
+                continue
+            if hasattr(a, "visibility_metrics"):
+                _, vis_term = a.visibility_metrics()
+                vals.append(float(vis_term))
+        return float(np.mean(vals)) if vals else 0.0
+
+    def _mean_smoke_exposure(self):
+        vals = [getattr(a, "smoke_exposure", 0.0) for a in self.agents if getattr(a, "is_pedestrian", False)]
+        return float(np.mean(vals)) if vals else 0.0
+
+    def _injured_counts(self):
+        tot = 0; fire=0; smoke=0; press=0
+        for a in self.agents:
+            if not getattr(a, "is_pedestrian", False): 
+                continue
+            if getattr(a, "injured", False):
+                tot += 1
+                cause = getattr(a, "injury_cause", None)
+                if cause == "fire":  fire += 1
+                elif cause == "smoke": smoke += 1
+                elif cause == "pressure": press += 1
+        return tot, fire, smoke, press
+    
+    def _followers_latched(self):
+        return sum(1 for a in self.agents 
+                if getattr(a, "is_pedestrian", False) 
+                and getattr(a, "follow_target_id", None) is not None)
+
+    def _leaders_remaining(self):
+        return sum(1 for a in self.agents 
+                if getattr(a, "is_pedestrian", False) and getattr(a, "is_leader", False))
+
+    def _diversity_stats(self):
+        vals = lambda attr: [float(getattr(a, attr)) for a in self.agents 
+                            if getattr(a, "is_pedestrian", False) and hasattr(a, attr)]
+        def safe_std(xs): 
+            return float(np.std(xs)) if len(xs) >= 2 else 0.0
+        return {
+            "std_v0_init": safe_std(vals("v0_init")),
+            "std_vmax":    safe_std(vals("vmax")),
+            "std_radius":  safe_std(vals("r")),
+            "std_mass":    safe_std(vals("m")),
+            "std_vis":     safe_std(vals("visibility_radius")),
+            "std_panic0":  safe_std(vals("panic_base")),
+        }
 
     def step(self):
         """Advance the model by one step."""
-
-        if hasattr(self, "fire") and self.fire is not None:
-            self.fire.step()
-
         self.agents.shuffle_do("step")
+
+        self.exit_counts_step = [c - p for c, p in zip(self.exit_counts, self._prev_exit_counts)]
+        self._prev_exit_counts = self.exit_counts.copy()
 
         self.datacollector.collect(self)
 

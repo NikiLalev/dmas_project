@@ -112,8 +112,7 @@ def RoomSpace(model):
 
 agents_plot, _ = make_mpl_plot_component("Agents")
 speed_plot,  _ = make_mpl_plot_component("Average_Speed")
-flow_plot,   _ = make_mpl_plot_component("Exit_Flow", page=1)
-dens_plot,   _ = make_mpl_plot_component("Average_Density", page=1)
+flow_plot, _ = make_mpl_plot_component("Exit_Flow_Total", page=1)
 
 model_params = {
     "dt":         {"type": "SliderFloat", "value": 0.10, "min": 0.01,"max": 0.10,"step":0.005,"label": "Δt"},
@@ -129,7 +128,7 @@ viz = SolaraViz(
     EvacuationModel(
         n_agents=40, width=27, height=20, dt=0.10, exit_width=2, num_exits=1
     ),
-    components=[RoomSpace, agents_plot, speed_plot, flow_plot, dens_plot],
+    components=[RoomSpace, agents_plot, speed_plot, flow_plot],
     model_params=model_params,
     name="Panic-Driven Evacuation",
     play_interval=100,

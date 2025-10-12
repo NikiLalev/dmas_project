@@ -3,6 +3,7 @@ import numpy as np
 from mesa import Agent
 from utils import _norm
 
+
 class SimplePedestrian(Agent):
     """
     Simplified pedestrian for Helbing replication.
@@ -28,9 +29,37 @@ class SimplePedestrian(Agent):
         
         self.is_pedestrian = True
         self.injured = False
+        self.injury_cause = None
 
         self.smoke_exposure = 0.0
         self.smoke_recovery_rate = smoke_recovery_rate  # rate at which smoke exposure decreases per step
+
+    def _resolve_hard_collisions(self, max_iter=2):
+        max_r = float(getattr(self.model, "max_agent_radius", 0.4))
+        R_query = self.r + max_r + 0.1
+
+        for _ in range(max_iter):
+            moved = False
+            for other in self.model.space.get_neighbors((self.x, self.y), R_query, include_center=False):
+                if other is self or not getattr(other, "is_pedestrian", False):
+                    continue
+                dx = self.x - other.x
+                dy = self.y - other.y
+                d = math.hypot(dx, dy)
+                min_d = self.r + other.r
+                if d < 1e-9:
+                    nx, ny = 1.0, 0.0
+                else:
+                    nx, ny = dx / max(d, 1e-9), dy / max(d, 1e-9)
+
+                if d < min_d:
+                    overlap = (min_d - d)
+                    w = 1.0 if getattr(other, "injured", False) else 0.5
+                    self.x += nx * overlap * w
+                    self.y += ny * overlap * w
+                    moved = True
+            if not moved:
+                break
         
     def nearest_exit_point(self):
         """Find nearest point on any exit."""
@@ -176,12 +205,12 @@ class SimplePedestrian(Agent):
         p1 = (x_prev, y_prev)
         p2 = (self.x, self.y)
 
-        for x0, y0, x1, y1 in self.model.exits:
+        for idx, (x0, y0, x1, y1) in enumerate(self.model.exits):
             q1 = (x0, y0)
             q2 = (x1, y1)
             if self._segments_intersect(p1, p2, q1, q2):
-                return True
-        return False
+                return idx
+        return None
     
     
     def calculate_acceleration(self, x, y, vx, vy):
@@ -255,6 +284,7 @@ class SimplePedestrian(Agent):
         pressure = F_radial / circumference
         if pressure > 1600.0:  # threshold from Helbing et al.
             self.injured = True
+            self.injury_cause = "pressure"
             self.vx = 0.0; self.vy = 0.0
             return  # already injured, stop here
 
@@ -262,6 +292,7 @@ class SimplePedestrian(Agent):
         fire = getattr(self.model, "fire", None)
         if fire and fire.is_inside_fire((self.x, self.y), self.r):
             self.injured = True
+            self.injury_cause = "fire"
             self.vx = 0.0; self.vy = 0.0
             return
 
@@ -269,6 +300,7 @@ class SimplePedestrian(Agent):
         thr = float(getattr(self.model, "smoke_exposure_threshold", float("inf")))
         if self.smoke_exposure >= thr:
             self.injured = True
+            self.injury_cause = "smoke"
             self.vx = 0.0; self.vy = 0.0
 
     def step_rk4(self):
@@ -342,6 +374,8 @@ class SimplePedestrian(Agent):
         self.x  += (k1_x  + 2.0*k2_x  + 2.0*k3_x  + k4_x ) / 6.0
         self.y  += (k1_y  + 2.0*k2_y  + 2.0*k3_y  + k4_y ) / 6.0
 
+        self._resolve_hard_collisions()
+
         # Speed cap
         speed = math.hypot(self.vx, self.vy)
         if speed > 10.0:
@@ -350,7 +384,9 @@ class SimplePedestrian(Agent):
             self.vy *= s
 
         # Exit check (remove agent if crossed an exit segment)
-        if self.has_exited():
+        exit_idx = self.has_exited()
+        if exit_idx is not None:
+            self.model._register_exit(self, exit_idx)
             self.model.space.remove_agent(self)
             self.model.agents.remove(self)
 
@@ -404,7 +440,9 @@ class SimplePedestrian(Agent):
         self.y += self.vy * dt
 
         # Exit check
-        if self.has_exited():
+        exit_idx = self.has_exited()
+        if exit_idx is not None:
+            self.model._register_exit(self, exit_idx)
             self.model.space.remove_agent(self)
             self.model.agents.remove(self)
     
