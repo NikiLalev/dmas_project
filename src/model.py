@@ -23,7 +23,7 @@ class EvacuationModel(Model):
                  num_exits=1,
                  num_leaders=1,
                  dt=0.01,
-                 integration_method='rk4',
+                 integration_method='euler',
                  vis_ref=10.0,
                  smoke_exposure_threshold=15.0,
                  seed=None):

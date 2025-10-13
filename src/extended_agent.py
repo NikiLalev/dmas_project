@@ -212,7 +212,7 @@ class ExtendedPedestrian(SimplePedestrian):
 
     def nearest_leader_dir_with_id(self):
         """Return (dir, leader_id) for the nearest leader within leader_radius, ignoring visibility."""
-        R = float(getattr(self, "leader_radius", 12.0))
+        R = float(getattr(self, "leader_radius", 15.0))
         best_dir, best_id, best_d = None, None, float("inf")
 
         for n in self.model.space.get_neighbors((self.x, self.y), R, include_center=False):
@@ -257,7 +257,7 @@ class ExtendedPedestrian(SimplePedestrian):
             1.0 - self.alpha_imp
         ) * self.impatience + self.alpha_imp * p_imp_raw
 
-        # update desired speed between relaxed v0_init and panic vmax
+        # update desired speed between relaxed v0_init and vmax
         self.v0 = (1.0 - self.impatience) * self.v0_init + self.impatience * self.vmax
 
     def update_panic(self):

@@ -448,9 +448,9 @@ class SimplePedestrian(Agent):
     
     def step(self):
         """
-        Choose integration method based on model settings
+        Choose integration method based on model settings.
+        Default is Euler; if 'rk4' is explicitly set, use RK4.
         """
-        # Use RK4 by default, fallback to Euler if needed
         integration_method = getattr(self.model, 'integration_method', 'euler')
         
         if integration_method == 'rk4':
