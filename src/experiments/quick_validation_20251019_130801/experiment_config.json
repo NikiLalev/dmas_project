@@ -1,0 +1,20 @@
+{
+  "experiment_date": "2025-10-19T13:08:01.053963",
+  "description": "Quick test with 3 v0 values to validate setup",
+  "model_parameters": {
+    "n_agents": 200,
+    "width": 15.0,
+    "height": 15.0,
+    "exit_width": 1.0,
+    "num_exits": 1,
+    "dt": 0.1,
+    "integration_method": "euler",
+    "agent_type": "simple",
+    "enable_fire": false,
+    "max_steps": 1000,
+    "exit_preset": "center_right"
+  },
+  "agent_parameters": {
+    "v0": 1.3
+  }
+}

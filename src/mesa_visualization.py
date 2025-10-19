@@ -75,7 +75,7 @@ def RoomSpace(model):
             float(fire.r_smoke),
             facecolor="gray",
             edgecolor="none",
-            alpha=0.25,
+            alpha=0.5,
             zorder=0,        # sotto gli agenti
         )
         ax.add_patch(smoke)
@@ -122,17 +122,23 @@ model_params = {
     "width":      {"type": "SliderFloat", "value": 27.0, "min": 10., "max": 40., "step": 1.,  "label": "Room width"},
     "height":     {"type": "SliderFloat", "value": 20.0, "min":  8., "max": 30., "step": 1.,  "label": "Room height"},
     "exit_width": {"type": "SliderFloat", "value": 2,  "min": 0.4, "max": 3.0, "step": 0.1, "label": "Exit width"},
+    "agent_type": {"type": "Select", "value": "extended", "values": ["simple", "extended"], "label": "Agent Type"},
+    "integration_method": {"type": "Select", "value": "euler", "values": ["euler", "rk4"], "label": "Integration Method"},
+    "enable_fire": {"type": "Checkbox", "value": True, "label": "Enable Fire"},
+    "exit_preset": {"type": "Select", "value": "random", 
+                   "values": ["random", "center_bottom", "center_right", "center_left", "opposite"], 
+                   "label": "Exit Configuration"},
 }
 
 viz = SolaraViz(
     EvacuationModel(
-        n_agents=40, width=27, height=20, dt=0.10, exit_width=2, num_exits=1
+        n_agents=50, width=15, height=15, dt=0.10, exit_width=1, num_exits=1
     ),
     components=[RoomSpace, agents_plot, speed_plot, flow_plot],
     model_params=model_params,
     name="Panic-Driven Evacuation",
-    play_interval=100,
-    render_interval=1,
+    play_interval=1,
+    render_interval=10,
     use_threads=False,
 )
 

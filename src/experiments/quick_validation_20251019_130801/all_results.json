@@ -1,0 +1,41 @@
+[
+  {
+    "v0": 1.0,
+    "run": 0,
+    "total_time": 100.0,
+    "evacuated": 157,
+    "injured": 0,
+    "evacuation_rate": 0.785,
+    "flow_rate": 1.57,
+    "simulation_steps": 1000,
+    "computation_time": 95.191596,
+    "final_agents_remaining": 43,
+    "timeout": true
+  },
+  {
+    "v0": 2.0,
+    "run": 0,
+    "total_time": 87.2,
+    "evacuated": 200,
+    "injured": 0,
+    "evacuation_rate": 1.0,
+    "flow_rate": 2.293577981651376,
+    "simulation_steps": 872,
+    "computation_time": 59.199941,
+    "final_agents_remaining": 0,
+    "timeout": false
+  },
+  {
+    "v0": 3.0,
+    "run": 0,
+    "total_time": 63.400000000000006,
+    "evacuated": 200,
+    "injured": 0,
+    "evacuation_rate": 1.0,
+    "flow_rate": 3.1545741324921135,
+    "simulation_steps": 634,
+    "computation_time": 46.918968,
+    "final_agents_remaining": 0,
+    "timeout": false
+  }
+]

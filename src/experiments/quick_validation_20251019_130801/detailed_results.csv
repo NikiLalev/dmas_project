@@ -1,0 +1,4 @@
+v0,run,total_time,evacuated,injured,evacuation_rate,flow_rate,simulation_steps,computation_time,final_agents_remaining,timeout
+1.0,0,100.0,157,0,0.785,1.57,1000,95.191596,43,True
+2.0,0,87.2,200,0,1.0,2.293577981651376,872,59.199941,0,False
+3.0,0,63.400000000000006,200,0,1.0,3.1545741324921135,634,46.918968,0,False

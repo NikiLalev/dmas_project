@@ -13,6 +13,8 @@ scipy==1.16.1
 matplotlib==3.10.6
 solara==1.51.1
 altair==5.5.0
+uvicorn==0.24.0
+networkx==3.4.2
 
 # Jupyter support
 ipykernel==6.30.1

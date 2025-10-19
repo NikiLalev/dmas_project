@@ -55,7 +55,7 @@ class DynamicFire(Agent):
     
     def step(self): 
         self.r_smoke += self.smoke_growth_rate
-        print(f"Step {self.model.steps}: Fire core = {self.r:.2f}, Smoke = {self.r_smoke:.2f}")
+        # print(f"Step {self.model.steps}: Fire core = {self.r:.2f}, Smoke = {self.r_smoke:.2f}")
 
     def is_inside_fire(self, pos, agent_radius=0.0):
         """

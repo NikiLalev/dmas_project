@@ -34,32 +34,55 @@ class SimplePedestrian(Agent):
         self.smoke_exposure = 0.0
         self.smoke_recovery_rate = smoke_recovery_rate  # rate at which smoke exposure decreases per step
 
-    def _resolve_hard_collisions(self, max_iter=2):
-        max_r = float(getattr(self.model, "max_agent_radius", 0.4))
-        R_query = self.r + max_r + 0.1
-
-        for _ in range(max_iter):
+    def resolve_overlaps(self, iterations=3):
+        """
+        Simple iterative overlap resolution.
+        Push overlapping agents apart by moving both agents.
+        """
+        for _ in range(iterations):
             moved = False
+            
+            # Check agent-agent overlaps
+            max_r = float(getattr(self.model, "max_agent_radius", 0.4))
+            R_query = self.r + max_r + 0.5
+            
             for other in self.model.space.get_neighbors((self.x, self.y), R_query, include_center=False):
-                if other is self or not getattr(other, "is_pedestrian", False):
+                if not getattr(other, "is_pedestrian", False) or other is self:
                     continue
+                
                 dx = self.x - other.x
                 dy = self.y - other.y
-                d = math.hypot(dx, dy)
-                min_d = self.r + other.r
-                if d < 1e-9:
-                    nx, ny = 1.0, 0.0
-                else:
-                    nx, ny = dx / max(d, 1e-9), dy / max(d, 1e-9)
-
-                if d < min_d:
-                    overlap = (min_d - d)
-                    w = 1.0 if getattr(other, "injured", False) else 0.5
-                    self.x += nx * overlap * w
-                    self.y += ny * overlap * w
+                dist = math.hypot(dx, dy)
+                min_dist = self.r + other.r
+                
+                if dist < min_dist and dist > 1e-9:
+                    # Calculate overlap
+                    overlap = min_dist - dist
+                    
+                    # Push both agents apart (split the movement)
+                    push_dist = overlap * 0.51  # 51% to ensure separation
+                    nx, ny = dx / dist, dy / dist
+                    
+                    self.x += nx * push_dist
+                    self.y += ny * push_dist
                     moved = True
+            
+            # Check wall overlaps
+            for wall in self.model.walls:
+                gx, gy = self._project_to_line(self.x, self.y, wall[0], wall[1], wall[2], wall[3])
+                dx = self.x - gx
+                dy = self.y - gy
+                dist = math.hypot(dx, dy)
+                
+                if dist < self.r and dist > 1e-9:
+                    # Push away from wall
+                    overlap = self.r - dist
+                    nx, ny = dx / dist, dy / dist
+                    self.x += nx * overlap * 1.05  # 105% to ensure clearance
+                    moved = True
+            
             if not moved:
-                break
+                break  # No overlaps found, exit early
         
     def nearest_exit_point(self):
         """Find nearest point on any exit."""
@@ -279,14 +302,15 @@ class SimplePedestrian(Agent):
         - if smoke exposure exceeds threshold
         """
         # 1) Injury from radial pressure
-        F_radial = np.linalg.norm([fx_a + fx_w, fy_a + fy_w])
-        circumference = 2 * math.pi * self.r
-        pressure = F_radial / circumference
-        if pressure > 1600.0:  # threshold from Helbing et al.
-            self.injured = True
-            self.injury_cause = "pressure"
-            self.vx = 0.0; self.vy = 0.0
-            return  # already injured, stop here
+        if self.v0 > 5.0:
+            F_radial = np.linalg.norm([fx_a + fx_w, fy_a + fy_w])
+            circumference = 2 * math.pi * self.r
+            pressure = F_radial / circumference
+            if pressure > 1600.0:  # threshold from Helbing et al.
+                self.injured = True
+                self.injury_cause = "pressure"
+                self.vx = 0.0; self.vy = 0.0
+                return  # already injured, stop here
 
         # 2) Injury from fire contact
         fire = getattr(self.model, "fire", None)
@@ -373,9 +397,14 @@ class SimplePedestrian(Agent):
         self.vy += (k1_vy + 2.0*k2_vy + 2.0*k3_vy + k4_vy) / 6.0
         self.x  += (k1_x  + 2.0*k2_x  + 2.0*k3_x  + k4_x ) / 6.0
         self.y  += (k1_y  + 2.0*k2_y  + 2.0*k3_y  + k4_y ) / 6.0
+        
+        # Only clamp if NOT passing through an exit
+        if not self._is_passing_through_exit():
+            # Clamp to room boundaries with agent radius buffer
+            self.x = max(self.r, min(self.model.width - self.r, self.x))
+            self.y = max(self.r, min(self.model.height - self.r, self.y))
 
-        self._resolve_hard_collisions()
-
+        
         # Speed cap
         speed = math.hypot(self.vx, self.vy)
         if speed > 10.0:
@@ -438,6 +467,13 @@ class SimplePedestrian(Agent):
         # Update position
         self.x += self.vx * dt
         self.y += self.vy * dt
+        
+        #self.resolve_overlaps(iterations=50)
+        # Only clamp if NOT passing through an exit
+        if not self._is_passing_through_exit():
+            # Clamp to room boundaries with agent radius buffer
+            self.x = max(self.r, min(self.model.width - self.r, self.x))
+            self.y = max(self.r, min(self.model.height - self.r, self.y))
 
         # Exit check
         exit_idx = self.has_exited()
@@ -445,6 +481,26 @@ class SimplePedestrian(Agent):
             self.model._register_exit(self, exit_idx)
             self.model.space.remove_agent(self)
             self.model.agents.remove(self)
+    
+    def _is_passing_through_exit(self, buffer=0.3):
+        """
+        Check if agent is in the process of passing through an exit.
+        
+        Args:
+            buffer: Extra distance around exit to consider "passing through"
+        """
+        for exit_x0, exit_y0, exit_x1, exit_y1 in self.model.exits:
+            # Project agent to exit line
+            gx, gy = self._project_to_line(self.x, self.y, exit_x0, exit_y0, exit_x1, exit_y1)
+            
+            # Distance to exit line
+            dist_to_exit = math.hypot(self.x - gx, self.y - gy)
+            
+            # If close to exit line, consider it "passing through"
+            if dist_to_exit <= self.r + buffer:
+                return True
+        
+        return False
     
     def step(self):
         """

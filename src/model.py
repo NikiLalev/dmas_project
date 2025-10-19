@@ -26,6 +26,11 @@ class EvacuationModel(Model):
                  integration_method='euler',
                  vis_ref=10.0,
                  smoke_exposure_threshold=15.0,
+                 agent_type= 'extended',
+                 enable_fire=True,
+                 agent_parameters=None,
+                 exits=None,
+                 exit_preset="random",
                  seed=None):
         super().__init__(seed=seed)
 
@@ -39,14 +44,26 @@ class EvacuationModel(Model):
         self.integration_method = integration_method
         self.smoke_exposure_threshold = float(smoke_exposure_threshold)
         self.vis_ref = vis_ref
+        self.agent_type = agent_type
+        self.enable_fire = enable_fire
+        self.agent_parameters = agent_parameters if agent_parameters is not None else {}
         self.steps = 0
         self.running = True
 
         # Create space
         self.space = ContinuousSpace(width, height, False)
 
-        # Define walls and exits (similar to Helbing's setup)
-        self._create_geometry()
+        # Handle exits. Logic is that we can pass exits manually for experiments or specify them through solara using some presets, else they are just randomly assigned while still respecting some minimum distance
+        if exits is not None:
+            self.exits = exits
+            self.num_exits = len(exits)
+            self._create_geometry_from_exits()
+        elif exit_preset != "random":
+            self.exits = self._get_preset_exits(exit_preset)
+            self.num_exits = len(self.exits)
+            self._create_geometry_from_exits()
+        else:
+            self._create_geometry()
 
         self.exit_counts = [0] * len(self.exits)
         self.exit_counts_leaders = [0] * len(self.exits)
@@ -55,10 +72,16 @@ class EvacuationModel(Model):
         self._prev_exit_counts = [0] * len(self.exits)
 
         # Create agents
-        self._create_extended_agents()
+        if self.agent_type == 'simple':
+            self._create_simple_agents()
+        else:
+            self._create_extended_agents()
 
         # Create fire
-        self._place_fire()
+        if self.enable_fire:
+            self._place_fire()
+        else:
+            self.fire = None
 
         # Data collection - could add more metrics
         self.datacollector = DataCollector(
@@ -240,8 +263,9 @@ class EvacuationModel(Model):
             while attempts < max_attempts_per_agent and not placed:
                 attempts += 1
                 # Place agents randomly in left 75% of room
-                x = self.random.uniform(2.0, (self.width * 0.75) - 2.0)
-                y = self.random.uniform(2.0, self.height - 2.0)
+                margin = 0.5
+                x = self.random.uniform(margin, self.width - margin)
+                y = self.random.uniform(margin, self.height - margin)
 
                 query_radius = radius + max_other_r + placement_margin
 
@@ -263,17 +287,18 @@ class EvacuationModel(Model):
 
                 if not conflict:
                     # Initial desired speed from normal distribution with mean 1.3 and std 0.2 in range [0.5, 2.0]
-                    v0 = self.random.normalvariate(1.3, 0.2)
-                    v0 = max(0.5, min(2.0, v0))
+                    if self.agent_parameters.get("v0"):
+                        v0 = self.agent_parameters["v0"]
+                    else:
+                        v0 = self.random.normalvariate(1.3, 0.2)
+                        v0 = max(0.5, min(2.0, v0))
 
                     agent = SimplePedestrian(
                         unique_id=i,
                         model=self,
                         pos=(x, y),
                         v0=v0,
-                        tau=0.5,
                         radius=radius,
-                        mass=80.0
                     )
 
                     self.space.place_agent(agent, (x, y))
@@ -282,17 +307,18 @@ class EvacuationModel(Model):
 
             if not placed:
                 # Initial desired speed from normal distribution with mean 1.3 and std 0.2 in range [0.5, 2.0]
-                v0 = self.random.normalvariate(1.3, 0.2)
-                v0 = max(0.5, min(2.0, v0))
+                if self.agent_parameters.get("v0"):
+                        v0 = self.agent_parameters["v0"]
+                else:
+                    v0 = self.random.normalvariate(1.3, 0.2)
+                    v0 = max(0.5, min(2.0, v0))
 
                 agent = SimplePedestrian(
                     unique_id=i,
                     model=self,
                     pos=(x, y),
                     v0=v0,
-                    tau=0.5,
-                    radius=radius,
-                    mass=80.0
+                    radius=radius
                 )
 
                 self.space.place_agent(agent, (x, y))
@@ -355,7 +381,6 @@ class EvacuationModel(Model):
             while attempts < max_attempts_per_agent and not placed:
                 attempts += 1
 
-                # random position in the left 3/4 of the room
                 margin = 0.5
                 x = self.random.uniform(margin, self.width - margin)
                 y = self.random.uniform(margin, self.height - margin)
@@ -552,12 +577,20 @@ class EvacuationModel(Model):
 
         self.exit_counts_step = [c - p for c, p in zip(self.exit_counts, self._prev_exit_counts)]
         self._prev_exit_counts = self.exit_counts.copy()
-
+        
+        # Collect data
         self.datacollector.collect(self)
-
-        if len(self.agents) == 0:
+        
+        # Check if simulation should stop:
+        # Stop when all non-injured pedestrians have evacuated
+        active_pedestrians = [
+            a for a in self.agents 
+            if getattr(a, "is_pedestrian", False) and not getattr(a, "injured", False)
+        ]
+        
+        if len(active_pedestrians) == 0:
             self.running = False
-
+        
         self.steps += 1
 
     def get_agent_positions(self):
@@ -567,3 +600,78 @@ class EvacuationModel(Model):
     def get_agent_velocities(self):
         """Get current agent velocities for visualization."""
         return [(agent.vx, agent.vy) for agent in self.agents]
+
+    def _create_geometry_from_exits(self):
+        """
+        Rebuild walls based on current self.exits.
+        Used by optimizer to update geometry after changing exit locations.
+        """
+        W, H = self.width, self.height
+        
+        def subtract_intervals(L, intervals):
+            """Return the complementary intervals in [0,L] after removing 'intervals'."""
+            intervals = sorted(intervals)
+            pieces = []
+            cur = 0.0
+            for s, e in intervals:
+                s = max(0.0, s)
+                e = min(L, e)
+                if s > cur:
+                    pieces.append((cur, s))
+                cur = max(cur, e)
+            if cur < L:
+                pieces.append((cur, L))
+            return pieces
+
+        # Categorize exits by which wall they're on
+        map_int = {"bottom": [], "top": [], "left": [], "right": []}
+        for (x0, y0, x1, y1) in self.exits:
+            if abs(y0) < 1e-6 and abs(y1) < 1e-6:  # bottom
+                map_int["bottom"].append((min(x0, x1), max(x0, x1)))
+            elif abs(y0 - H) < 1e-6 and abs(y1 - H) < 1e-6:  # top
+                map_int["top"].append((min(x0, x1), max(x0, x1)))
+            elif abs(x0) < 1e-6 and abs(x1) < 1e-6:  # left
+                map_int["left"].append((min(y0, y1), max(y0, y1)))
+            elif abs(x0 - W) < 1e-6 and abs(x1 - W) < 1e-6:  # right
+                map_int["right"].append((min(y0, y1), max(y0, y1)))
+
+        walls = []
+
+        # bottom: y=0, x in [0,W]\exits
+        for s, e in subtract_intervals(W, map_int["bottom"]):
+            if e - s > 1e-9:
+                walls.append((s, 0.0, e, 0.0))
+
+        # top: y=H
+        for s, e in subtract_intervals(W, map_int["top"]):
+            if e - s > 1e-9:
+                walls.append((s, H, e, H))
+
+        # left: x=0, y in [0,H]
+        for s, e in subtract_intervals(H, map_int["left"]):
+            if e - s > 1e-9:
+                walls.append((0.0, s, 0.0, e))
+
+        # right: x=W
+        for s, e in subtract_intervals(H, map_int["right"]):
+            if e - s > 1e-9:
+                walls.append((W, s, W, e))
+
+        self.walls = walls
+        
+    def _get_preset_exits(self, preset_name):
+        """Get predefined exit configurations for Solara visualization."""
+        w, h = self.width, self.height
+        ew = self.exit_width
+        
+        presets = {
+            "center_bottom": [(w/2 - ew/2, 0, w/2 + ew/2, 0)],  # Bottom center
+            "center_right": [(w, h/2 - ew/2, w, h/2 + ew/2)],   # Right center
+            "center_left": [(0, h/2 - ew/2, 0, h/2 + ew/2)],    # Left center
+            "opposite": [
+                (0, h/2 - ew/2, 0, h/2 + ew/2),        # Left center
+                (w, h/2 - ew/2, w, h/2 + ew/2)         # Right center
+            ]
+        }
+        
+        return presets.get(preset_name, [(w, h/2 - ew/2, w, h/2 + ew/2)])
