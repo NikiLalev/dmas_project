@@ -21,11 +21,11 @@ class SimplePedestrian(Agent):
         self.r = radius     # body radius
         self.m = mass       # body mass (80 kg typical)
         
-        # Helbing parameters (exact values from paper)
-        self.A = 2000.0     # interaction strength
-        self.B = 0.08       # interaction range
-        self.k = 1.2e5      # body force constant
-        self.kappa = 2.4e5  # friction constant
+        # Lakoba parameters (exact values from paper)
+        self.A = 300 + self.random.uniform(0, 600)    # interaction strength
+        self.B = 0.25       # interaction range
+        self.k = 1.2e4      # body force constant
+        self.kappa = 2.4e4  # friction constant
         
         self.is_pedestrian = True
         self.injured = False
@@ -148,6 +148,12 @@ class SimplePedestrian(Agent):
         """Social force from other agents."""
         fx, fy = 0.0, 0.0
         
+        # Get my desired direction for visibility calculations
+        e0 = getattr(self, "e0", None)
+        if e0 is None or np.linalg.norm(e0) < 1e-12:
+            gx, gy = self.nearest_exit_point()
+            e0 = self.desired_direction(gx, gy)
+            
         for other in self.model.space.get_neighbors((self.x, self.y), R, include_center=False):
             if other is self or not getattr(other, "is_pedestrian", False):
                 continue
@@ -166,12 +172,14 @@ class SimplePedestrian(Agent):
             # sum of radii
             rij = self.r + other.r
             
+            visibility_weight = self._calculate_visibility_weight(nij, e0)
+
             # Tanential velocity
             dvij_t = np.dot(np.array([other.vx - self.vx, other.vy - self.vy]), tij)
             
             # Forces
             # Split the Helbing formula (2) into 3 parts for clarity by multiplying with nij
-            f_social = self.A * math.exp((rij - d) / self.B) * nij
+            f_social = self.A * math.exp((rij - d) / self.B) * nij * visibility_weight
             # below, we have max as per the defintion of g() to ensure 0 if no contact aka dist > rij
             f_body   = self.k * max(0.0, rij - d) * nij
             f_fric   = self.kappa * max(0.0, rij - d) * dvij_t * tij
@@ -179,6 +187,29 @@ class SimplePedestrian(Agent):
             f = f_social + f_body + f_fric
             fx += f[0]; fy += f[1]        
         return fx, fy
+    
+    def _calculate_visibility_weight(self, direction_to_other, my_direction):
+        """
+        Calculate visibility weight based on field of view.
+        
+        People have stronger repulsion from agents they can see (in front)
+        and weaker repulsion from agents behind them.
+        """
+        # Calculate angle between my direction and direction to other agent
+        cos_angle = np.dot(my_direction, -direction_to_other)
+        angle = math.acos(np.clip(cos_angle, -1.0, 1.0))
+        
+        # Field of view parameters
+        full_vision_angle = math.pi * 2/3  # 120 degrees of full vision
+        min_visibility = 0.2  # 20% visibility for agents behind
+        
+        if angle <= full_vision_angle:
+            return 1.0  # Full visibility in front
+        else:
+            # Gradual decrease behind
+            fade_region = math.pi - full_vision_angle
+            fade_factor = (angle - full_vision_angle) / fade_region
+            return 1.0 - fade_factor * (1.0 - min_visibility)
     
     def wall_repulsion(self):
         """Social force from walls."""
@@ -302,15 +333,19 @@ class SimplePedestrian(Agent):
         - if smoke exposure exceeds threshold
         """
         # 1) Injury from radial pressure
-        if self.v0 > 5.0:
-            F_radial = np.linalg.norm([fx_a + fx_w, fy_a + fy_w])
-            circumference = 2 * math.pi * self.r
-            pressure = F_radial / circumference
-            if pressure > 1600.0:  # threshold from Helbing et al.
-                self.injured = True
-                self.injury_cause = "pressure"
-                self.vx = 0.0; self.vy = 0.0
-                return  # already injured, stop here
+        F_radial = np.linalg.norm([fx_a + fx_w, fy_a + fy_w])
+        circumference = 2 * math.pi * self.r
+        pressure = F_radial / circumference
+        if pressure > 1600.0:  # threshold from Helbing et al.
+            print(f"Radial pressure: {pressure} for agent {self.unique_id}")
+            print(f"Agent forces: {fx_a}, {fy_a}")
+            print(f"Wall forces: {fx_w}, {fy_w}")
+            print(f"Agent repulsion force = {self.A}")
+
+            self.injured = True
+            self.injury_cause = "pressure"
+            self.vx = 0.0; self.vy = 0.0
+            return  # already injured, stop here
 
         # 2) Injury from fire contact
         fire = getattr(self.model, "fire", None)
@@ -432,6 +467,8 @@ class SimplePedestrian(Agent):
 
         # Already injured from previous steps → skip everything
         if self.injured:
+            self.vx = 0.0
+            self.vy = 0.0
             return
 
         self._last_x, self._last_y = self.x, self.y
@@ -448,6 +485,8 @@ class SimplePedestrian(Agent):
 
         # If injured during this step, stop here
         if self.injured:
+            self.vx = 0.0
+            self.vy = 0.0
             return
 
         # Add driving force and integrate
@@ -468,7 +507,7 @@ class SimplePedestrian(Agent):
         self.x += self.vx * dt
         self.y += self.vy * dt
         
-        #self.resolve_overlaps(iterations=50)
+        # self.resolve_overlaps(iterations=50)
         # Only clamp if NOT passing through an exit
         if not self._is_passing_through_exit():
             # Clamp to room boundaries with agent radius buffer

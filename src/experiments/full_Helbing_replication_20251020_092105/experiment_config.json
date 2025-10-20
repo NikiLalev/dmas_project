@@ -1,0 +1,20 @@
+{
+  "experiment_date": "2025-10-20T09:21:05.226111",
+  "description": "Full Helbing replication experiment with desired speeds ranging from 0.5 to 10 m/s with and 3 replicates per condition",
+  "model_parameters": {
+    "n_agents": 50,
+    "width": 15.0,
+    "height": 15.0,
+    "exit_width": 2.0,
+    "num_exits": 1,
+    "dt": 0.1,
+    "integration_method": "euler",
+    "agent_type": "simple",
+    "enable_fire": false,
+    "max_steps": 1000,
+    "exit_preset": "center_right"
+  },
+  "agent_parameters": {
+    "v0": 1.3
+  }
+}

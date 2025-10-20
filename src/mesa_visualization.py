@@ -116,23 +116,23 @@ flow_plot, _ = make_mpl_plot_component("Exit_Flow_Total", page=1)
 
 model_params = {
     "dt":         {"type": "SliderFloat", "value": 0.10, "min": 0.01,"max": 0.10,"step":0.005,"label": "Δt"},
-    "n_agents":   {"type": "SliderInt",   "value": 40,   "min": 5,   "max": 200, "step": 5,   "label": "Agents"},
+    "n_agents":   {"type": "SliderInt",   "value": 10,   "min": 5,   "max": 200, "step": 5,   "label": "Agents"},
     "num_leaders":{"type": "SliderInt",   "value": 1,    "min": 0,   "max": 10,  "step": 1,   "label": "Leaders"},
     "num_exits":  {"type": "SliderInt",   "value": 1,    "min": 1,   "max": 3,   "step": 1,   "label": "Exits"},
-    "width":      {"type": "SliderFloat", "value": 27.0, "min": 10., "max": 40., "step": 1.,  "label": "Room width"},
-    "height":     {"type": "SliderFloat", "value": 20.0, "min":  8., "max": 30., "step": 1.,  "label": "Room height"},
-    "exit_width": {"type": "SliderFloat", "value": 2,  "min": 0.4, "max": 3.0, "step": 0.1, "label": "Exit width"},
-    "agent_type": {"type": "Select", "value": "extended", "values": ["simple", "extended"], "label": "Agent Type"},
+    "width":      {"type": "SliderFloat", "value": 15.0, "min": 10., "max": 40., "step": 1.,  "label": "Room width"},
+    "height":     {"type": "SliderFloat", "value": 15.0, "min":  8., "max": 30., "step": 1.,  "label": "Room height"},
+    "exit_width": {"type": "SliderFloat", "value": 2.0,  "min": 0.4, "max": 3.0, "step": 0.1, "label": "Exit width"},
+    "agent_type": {"type": "Select", "value": "simple", "values": ["simple", "extended"], "label": "Agent Type"},
     "integration_method": {"type": "Select", "value": "euler", "values": ["euler", "rk4"], "label": "Integration Method"},
-    "enable_fire": {"type": "Checkbox", "value": True, "label": "Enable Fire"},
-    "exit_preset": {"type": "Select", "value": "random", 
+    "enable_fire": {"type": "Checkbox", "value": False, "label": "Enable Fire"},
+    "exit_preset": {"type": "Select", "value": "center_right", 
                    "values": ["random", "center_bottom", "center_right", "center_left", "opposite"], 
                    "label": "Exit Configuration"},
 }
 
 viz = SolaraViz(
     EvacuationModel(
-        n_agents=50, width=15, height=15, dt=0.10, exit_width=1, num_exits=1
+        n_agents=50, width=15, height=15, dt=0.10, exit_width=2, num_exits=1
     ),
     components=[RoomSpace, agents_plot, speed_plot, flow_plot],
     model_params=model_params,

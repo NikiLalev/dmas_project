@@ -1,0 +1,21 @@
+{
+  "model_params": {
+    "n_agents": 50,
+    "width": 15.0,
+    "height": 15.0,
+    "exit_width": 2.0,
+    "num_exits": 1,
+    "dt": 0.1,
+    "integration_method": "euler",
+    "agent_type": "simple",
+    "enable_fire": false,
+    "max_steps": 1000,
+    "exit_preset": "center_right"
+  },
+  "agent_params": {
+    "v0": 2.5
+  },
+  "v0_actual": 2.5,
+  "run_number": 2,
+  "seed": 44
+}
