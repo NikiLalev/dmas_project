@@ -349,7 +349,7 @@ class EvacuationModel(Model):
             # --- ExtendedPedestrian parameters (randomized where it makes sense) ---
 
             # desired initial speed (truncated normal distribution)
-            v0 = self.random.normalvariate(1.3, 0.2)
+            v0 = self.random.normalvariate(1.0, 0.2)
             v0 = max(0.5, min(2.0, v0))
 
             # leader or follower
@@ -668,9 +668,14 @@ class EvacuationModel(Model):
             "center_bottom": [(w/2 - ew/2, 0, w/2 + ew/2, 0)],  # Bottom center
             "center_right": [(w, h/2 - ew/2, w, h/2 + ew/2)],   # Right center
             "center_left": [(0, h/2 - ew/2, 0, h/2 + ew/2)],    # Left center
-            "opposite": [
+            "two_exits": [
                 (0, h/2 - ew/2, 0, h/2 + ew/2),        # Left center
                 (w, h/2 - ew/2, w, h/2 + ew/2)         # Right center
+            ],
+            "three_exits": [
+                (w/2 - ew/2, 0, w/2 + ew/2, 0), # Bottom center
+                (w, h/2 - ew/2, w, h/2 + ew/2), # Right center
+                (0, h/2 - ew/2, 0, h/2 + ew/2)  # Left center
             ]
         }
         

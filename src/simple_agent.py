@@ -337,10 +337,10 @@ class SimplePedestrian(Agent):
         circumference = 2 * math.pi * self.r
         pressure = F_radial / circumference
         if pressure > 1600.0:  # threshold from Helbing et al.
-            print(f"Radial pressure: {pressure} for agent {self.unique_id}")
-            print(f"Agent forces: {fx_a}, {fy_a}")
-            print(f"Wall forces: {fx_w}, {fy_w}")
-            print(f"Agent repulsion force = {self.A}")
+            # print(f"Radial pressure: {pressure} for agent {self.unique_id}")
+            # print(f"Agent forces: {fx_a}, {fy_a}")
+            # print(f"Wall forces: {fx_w}, {fy_w}")
+            # print(f"Agent repulsion force = {self.A}")
 
             self.injured = True
             self.injury_cause = "pressure"
