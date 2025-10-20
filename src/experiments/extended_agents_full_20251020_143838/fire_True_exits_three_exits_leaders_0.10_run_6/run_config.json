@@ -1,0 +1,23 @@
+{
+  "model_params": {
+    "n_agents": 50,
+    "width": 15.0,
+    "height": 15.0,
+    "exit_width": 2.0,
+    "dt": 0.1,
+    "integration_method": "euler",
+    "agent_type": "extended",
+    "max_steps": 1000,
+    "enable_fire": true,
+    "exit_preset": "three_exits",
+    "num_leaders": 5,
+    "num_exits": 3
+  },
+  "agent_params": {},
+  "fire_enabled": true,
+  "exit_preset": "three_exits",
+  "leader_proportion": 0.1,
+  "num_leaders": 5,
+  "run_number": 6,
+  "seed": 48
+}

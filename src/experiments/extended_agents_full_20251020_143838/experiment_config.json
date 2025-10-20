@@ -1,0 +1,15 @@
+{
+  "experiment_date": "2025-10-20T14:38:38.228766",
+  "description": "Comprehensive extended agent experiment testing fire, multiple exits, and leadership effects on evacuation dynamics",
+  "model_parameters": {
+    "n_agents": 50,
+    "width": 15.0,
+    "height": 15.0,
+    "exit_width": 2.0,
+    "dt": 0.1,
+    "integration_method": "euler",
+    "agent_type": "extended",
+    "max_steps": 1000
+  },
+  "agent_parameters": {}
+}
