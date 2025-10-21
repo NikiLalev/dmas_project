@@ -25,5 +25,5 @@
 
 ### Visualization
 ```bash
-solara run src/mesa_visualization.py
+python -m solara run src/mesa_visualization.py
 ```
