@@ -47,7 +47,7 @@ class DynamicFire(Agent):
         self.r_smoke = initial_smoke_radius    # initial smoke radius
         self.smoke_growth_rate = smoke_growth_rate
         self.smoke_traversable = True          # can be crossed
-        self.smoke_density = smoke_density     # for agent visability
+        self.smoke_density = smoke_density     # for smoke exposure
         self.smoke_color = "gray"              # color for visualisation
 
     def get_position(self):
@@ -55,7 +55,6 @@ class DynamicFire(Agent):
     
     def step(self): 
         self.r_smoke += self.smoke_growth_rate
-        # print(f"Step {self.model.steps}: Fire core = {self.r:.2f}, Smoke = {self.r_smoke:.2f}")
 
     def is_inside_fire(self, pos, agent_radius=0.0):
         """
