@@ -15,23 +15,25 @@ class EvacuationModel(Model):
     Rectangular room with central wall and exit.
     """
 
-    def __init__(self,
-                 n_agents=200,
-                 width=20.0,
-                 height=15.0,
-                 exit_width=2,
-                 num_exits=1,
-                 num_leaders=1,
-                 dt=0.01,
-                 integration_method='euler',
-                 vis_ref=10.0,
-                 smoke_exposure_threshold=15.0,
-                 agent_type= 'extended',
-                 enable_fire=True,
-                 agent_parameters=None,
-                 exits=None,
-                 exit_preset="random",
-                 seed=None):
+    def __init__(
+        self,
+        n_agents=200,
+        width=20.0,
+        height=15.0,
+        exit_width=2,
+        num_exits=1,
+        num_leaders=1,
+        dt=0.01,
+        integration_method="euler",
+        vis_ref=10.0,
+        smoke_exposure_threshold=15.0,
+        agent_type="extended",
+        enable_fire=True,
+        agent_parameters=None,
+        exits=None,
+        exit_preset="random",
+        seed=None,
+    ):
         super().__init__(seed=seed)
 
         self.n_agents = n_agents
@@ -72,7 +74,7 @@ class EvacuationModel(Model):
         self._prev_exit_counts = [0] * len(self.exits)
 
         # Create agents
-        if self.agent_type == 'simple':
+        if self.agent_type == "simple":
             self._create_simple_agents()
         else:
             self._create_extended_agents()
@@ -83,53 +85,82 @@ class EvacuationModel(Model):
         else:
             self.fire = None
 
-        # Data collection - could add more metrics
+        # Data collection - metrics
         self.datacollector = DataCollector(
             model_reporters={
-                "Agents": lambda m: sum(1 for a in m.agents if getattr(a, "is_pedestrian", False)),
+                "Agents": lambda m: sum(
+                    1 for a in m.agents if getattr(a, "is_pedestrian", False)
+                ),
                 "Average_Speed": lambda m: (
-                    np.mean([math.hypot(a.vx, a.vy) for a in m.agents if getattr(a, "is_pedestrian", False)])
-                    if any(getattr(a, "is_pedestrian", False) for a in m.agents) else 0
+                    np.mean(
+                        [
+                            math.hypot(a.vx, a.vy)
+                            for a in m.agents
+                            if getattr(a, "is_pedestrian", False)
+                        ]
+                    )
+                    if any(getattr(a, "is_pedestrian", False) for a in m.agents)
+                    else 0
                 ),
                 "Exit_Flow_Total": lambda m: sum(m.exit_counts_step),
-                "Exit0_Flow": lambda m: (m.exit_counts_step[0] if len(m.exit_counts_step) > 0 else 0),
-                "Exit1_Flow": lambda m: (m.exit_counts_step[1] if len(m.exit_counts_step) > 1 else 0),
-                "Exit2_Flow": lambda m: (m.exit_counts_step[2] if len(m.exit_counts_step) > 2 else 0),
-                "Exit_Balance_Entropy": lambda m: (
-                    (lambda p: float(-np.sum([pi*np.log(pi) for pi in p if pi>0.0])) if sum(m.exit_counts)>0 else 0.0)
-                    ([c / max(1, sum(m.exit_counts)) for c in m.exit_counts])
+                "Exit0_Flow": lambda m: (
+                    m.exit_counts_step[0] if len(m.exit_counts_step) > 0 else 0
                 ),
-                "Exit0_Pressure": lambda m: (m._mean_pressure_near_exit(0) if len(m.exits) > 0 else 0.0),
-                "Exit1_Pressure": lambda m: (m._mean_pressure_near_exit(1) if len(m.exits) > 1 else 0.0),
-                "Exit2_Pressure": lambda m: (m._mean_pressure_near_exit(2) if len(m.exits) > 2 else 0.0),
+                "Exit1_Flow": lambda m: (
+                    m.exit_counts_step[1] if len(m.exit_counts_step) > 1 else 0
+                ),
+                "Exit2_Flow": lambda m: (
+                    m.exit_counts_step[2] if len(m.exit_counts_step) > 2 else 0
+                ),
+                "Exit_Balance_Entropy": lambda m: (
+                    (
+                        lambda p: (
+                            float(-np.sum([pi * np.log(pi) for pi in p if pi > 0.0]))
+                            if sum(m.exit_counts) > 0
+                            else 0.0
+                        )
+                    )([c / max(1, sum(m.exit_counts)) for c in m.exit_counts])
+                ),
+                "Exit0_Pressure": lambda m: (
+                    m._mean_pressure_near_exit(0) if len(m.exits) > 0 else 0.0
+                ),
+                "Exit1_Pressure": lambda m: (
+                    m._mean_pressure_near_exit(1) if len(m.exits) > 1 else 0.0
+                ),
+                "Exit2_Pressure": lambda m: (
+                    m._mean_pressure_near_exit(2) if len(m.exits) > 2 else 0.0
+                ),
                 "Followers_Latched": lambda m: m._followers_latched(),
                 "Leaders_Remaining": lambda m: m._leaders_remaining(),
                 "Mean_VisTerm": lambda m: m._mean_vis_term(),
                 "Mean_SmokeExposure": lambda m: m._mean_smoke_exposure(),
                 "Injured_Total": lambda m: m._injured_counts()[0],
-                "Injured_Fire":  lambda m: m._injured_counts()[1],
+                "Injured_Fire": lambda m: m._injured_counts()[1],
                 "Injured_Smoke": lambda m: m._injured_counts()[2],
                 "Injured_Press": lambda m: m._injured_counts()[3],
                 "Std_v0_init": lambda m: m._diversity_stats()["std_v0_init"],
-                "Std_vmax":    lambda m: m._diversity_stats()["std_vmax"],
-                "Std_radius":  lambda m: m._diversity_stats()["std_radius"],
-                "Std_mass":    lambda m: m._diversity_stats()["std_mass"],
-                "Std_vis":     lambda m: m._diversity_stats()["std_vis"],
-                "Std_panic0":  lambda m: m._diversity_stats()["std_panic0"],
+                "Std_vmax": lambda m: m._diversity_stats()["std_vmax"],
+                "Std_radius": lambda m: m._diversity_stats()["std_radius"],
+                "Std_mass": lambda m: m._diversity_stats()["std_mass"],
+                "Std_vis": lambda m: m._diversity_stats()["std_vis"],
+                "Std_panic0": lambda m: m._diversity_stats()["std_panic0"],
             },
             agent_reporters={
                 "is_pedestrian": lambda a: getattr(a, "is_pedestrian", False),
-                "is_leader":     lambda a: getattr(a, "is_leader", False),
-                "injured":       lambda a: getattr(a, "injured", False),
-                "injury_cause":  lambda a: getattr(a, "injury_cause", None),
-                "knows_exit":    lambda a: getattr(a, "knows_exit", False),
+                "is_leader": lambda a: getattr(a, "is_leader", False),
+                "injured": lambda a: getattr(a, "injured", False),
+                "injury_cause": lambda a: getattr(a, "injury_cause", None),
+                "knows_exit": lambda a: getattr(a, "knows_exit", False),
                 "follow_target_id": lambda a: getattr(a, "follow_target_id", None),
-                "smoke_exposure":  lambda a: getattr(a, "smoke_exposure", 0.0),
-                "panic":           lambda a: getattr(a, "panic", 0.0),
-                "impatience":      lambda a: getattr(a, "impatience", 0.0),
-                "x": "x", "y": "y", "vx": "vx", "vy": "vy",
+                "smoke_exposure": lambda a: getattr(a, "smoke_exposure", 0.0),
+                "panic": lambda a: getattr(a, "panic", 0.0),
+                "impatience": lambda a: getattr(a, "impatience", 0.0),
+                "x": "x",
+                "y": "y",
+                "vx": "vx",
+                "vy": "vy",
                 "Speed": lambda a: math.hypot(a.vx, a.vy),
-            }
+            },
         )
 
     def _create_geometry(self):
@@ -145,16 +176,16 @@ class EvacuationModel(Model):
         def make_exit_segment(side, c0, c1):
             if side == "bottom":  # y=0, x in [c0,c1]
                 return (c0, 0.0, c1, 0.0)
-            if side == "top":     # y=H, x in [c0,c1]
+            if side == "top":  # y=H, x in [c0,c1]
                 return (c0, H, c1, H)
-            if side == "left":    # x=0, y in [c0,c1]
+            if side == "left":  # x=0, y in [c0,c1]
                 return (0.0, c0, 0.0, c1)
-            if side == "right":   # x=W, y in [c0,c1]
+            if side == "right":  # x=W, y in [c0,c1]
                 return (W, c0, W, c1)
             raise ValueError
 
         sides = ["bottom", "top", "left", "right"]
-        safe_margin = 0.75  
+        safe_margin = 0.75
 
         chosen = []  # (side, start, end)
 
@@ -199,7 +230,8 @@ class EvacuationModel(Model):
             pieces = []
             cur = 0.0
             for s, e in intervals:
-                s = max(0.0, s); e = min(L, e)
+                s = max(0.0, s)
+                e = min(L, e)
                 if s > cur:
                     pieces.append((cur, s))
                 cur = max(cur, e)
@@ -208,14 +240,14 @@ class EvacuationModel(Model):
             return pieces
 
         map_int = {"bottom": [], "top": [], "left": [], "right": []}
-        for (x0, y0, x1, y1) in self.exits:
-            if y0 == 0.0 and y1 == 0.0:                  # bottom
+        for x0, y0, x1, y1 in self.exits:
+            if y0 == 0.0 and y1 == 0.0:  # bottom
                 map_int["bottom"].append((min(x0, x1), max(x0, x1)))
-            elif y0 == H and y1 == H:                    # top
+            elif y0 == H and y1 == H:  # top
                 map_int["top"].append((min(x0, x1), max(x0, x1)))
-            elif x0 == 0.0 and x1 == 0.0:                # left
+            elif x0 == 0.0 and x1 == 0.0:  # left
                 map_int["left"].append((min(y0, y1), max(y0, y1)))
-            elif x0 == W and x1 == W:                    # right
+            elif x0 == W and x1 == W:  # right
                 map_int["right"].append((min(y0, y1), max(y0, y1)))
 
         walls = []
@@ -270,7 +302,9 @@ class EvacuationModel(Model):
                 query_radius = radius + max_other_r + placement_margin
 
                 if len(self.space.agents) > 0:
-                    neighbors = self.space.get_neighbors((x, y), radius=query_radius, include_center=False)
+                    neighbors = self.space.get_neighbors(
+                        (x, y), radius=query_radius, include_center=False
+                    )
                 else:
                     neighbors = []
 
@@ -308,17 +342,13 @@ class EvacuationModel(Model):
             if not placed:
                 # Initial desired speed from normal distribution with mean 1.3 and std 0.2 in range [0.5, 2.0]
                 if self.agent_parameters.get("v0"):
-                        v0 = self.agent_parameters["v0"]
+                    v0 = self.agent_parameters["v0"]
                 else:
                     v0 = self.random.normalvariate(1.3, 0.2)
                     v0 = max(0.5, min(2.0, v0))
 
                 agent = SimplePedestrian(
-                    unique_id=i,
-                    model=self,
-                    pos=(x, y),
-                    v0=v0,
-                    radius=radius
+                    unique_id=i, model=self, pos=(x, y), v0=v0, radius=radius
                 )
 
                 self.space.place_agent(agent, (x, y))
@@ -326,14 +356,18 @@ class EvacuationModel(Model):
 
     def _create_extended_agents(self):
         """
-        Create and place agents randomly in the left part of the room, 
+        Create and place agents randomly in the left part of the room,
         using ExtendedPedestrian with randomized parameters.
         """
         max_attempts_per_agent = 300
         placement_margin = 0.02
         max_other_r = 0.35
 
-        leader_ids = set(self.random.sample(range(self.n_agents), self.num_leaders)) if self.n_agents > 0 else set()
+        leader_ids = (
+            set(self.random.sample(range(self.n_agents), self.num_leaders))
+            if self.n_agents > 0
+            else set()
+        )
 
         # number of available exits
         n_exits = len(getattr(self, "exits", []))
@@ -387,7 +421,9 @@ class EvacuationModel(Model):
 
                 query_radius = radius + max_other_r + placement_margin
                 if len(getattr(self.space, "agents", [])) > 0:
-                    nbs = self.space.get_neighbors((x, y), radius=query_radius, include_center=False)
+                    nbs = self.space.get_neighbors(
+                        (x, y), radius=query_radius, include_center=False
+                    )
                 else:
                     nbs = []
 
@@ -446,7 +482,15 @@ class EvacuationModel(Model):
                 self.space.place_agent(agent, (x, y))
                 self.agents.add(agent)
 
-            self.max_agent_radius = max(float(getattr(a, "r", 0.0)) for a in self.agents if getattr(a, "is_pedestrian", False)) if self.agents else 0.4
+            self.max_agent_radius = (
+                max(
+                    float(getattr(a, "r", 0.0))
+                    for a in self.agents
+                    if getattr(a, "is_pedestrian", False)
+                )
+                if self.agents
+                else 0.4
+            )
 
     def _place_fire(self):
         """Create and place fire randomly in room."""
@@ -454,10 +498,7 @@ class EvacuationModel(Model):
         x = self.random.uniform(2.0, (self.width * 0.75) - 1.0)
         y = self.random.uniform(1.0, self.height - 1.0)
 
-        fire = DynamicFire(
-            model=self,
-            pos=(x, y)
-        )
+        fire = DynamicFire(model=self, pos=(x, y))
 
         self.space.place_agent(fire, (x, y))
 
@@ -479,7 +520,7 @@ class EvacuationModel(Model):
             if dist < exit_area:
                 agents_near_exit += 1
 
-        return agents_near_exit / (np.pi * exit_area ** 2)
+        return agents_near_exit / (np.pi * exit_area**2)
 
     def visibility_at(self, x, y):
         """Calculate visibility at position (x, y) considering fire and smoke."""
@@ -495,13 +536,13 @@ class EvacuationModel(Model):
             smoke_min = 2.0
             return smoke_min + (base - smoke_min) * (d / max(fire.r_smoke, 1e-6))
         return base
-    
+
     def _agents_near_exit(self, exit_idx: int, radius=3.0):
         x0, y0, x1, y1 = self.exits[exit_idx]
         cx, cy = 0.5 * (x0 + x1), 0.5 * (y0 + y1)
         out = []
         for a in self.agents:
-            if not getattr(a, "is_pedestrian", False): 
+            if not getattr(a, "is_pedestrian", False):
                 continue
             if math.hypot(a.x - cx, a.y - cy) <= radius:
                 out.append(a)
@@ -520,11 +561,11 @@ class EvacuationModel(Model):
             return 0.0
         vals = [self._pressure_of_agent(a) for a in agents]
         return float(np.mean(vals))
-    
+
     def _mean_vis_term(self):
         vals = []
         for a in self.agents:
-            if not getattr(a, "is_pedestrian", False): 
+            if not getattr(a, "is_pedestrian", False):
                 continue
             if hasattr(a, "visibility_metrics"):
                 _, vis_term = a.visibility_metrics()
@@ -532,65 +573,89 @@ class EvacuationModel(Model):
         return float(np.mean(vals)) if vals else 0.0
 
     def _mean_smoke_exposure(self):
-        vals = [getattr(a, "smoke_exposure", 0.0) for a in self.agents if getattr(a, "is_pedestrian", False)]
+        vals = [
+            getattr(a, "smoke_exposure", 0.0)
+            for a in self.agents
+            if getattr(a, "is_pedestrian", False)
+        ]
         return float(np.mean(vals)) if vals else 0.0
 
     def _injured_counts(self):
-        tot = 0; fire=0; smoke=0; press=0
+        tot = 0
+        fire = 0
+        smoke = 0
+        press = 0
         for a in self.agents:
-            if not getattr(a, "is_pedestrian", False): 
+            if not getattr(a, "is_pedestrian", False):
                 continue
             if getattr(a, "injured", False):
                 tot += 1
                 cause = getattr(a, "injury_cause", None)
-                if cause == "fire":  fire += 1
-                elif cause == "smoke": smoke += 1
-                elif cause == "pressure": press += 1
+                if cause == "fire":
+                    fire += 1
+                elif cause == "smoke":
+                    smoke += 1
+                elif cause == "pressure":
+                    press += 1
         return tot, fire, smoke, press
-    
+
     def _followers_latched(self):
-        return sum(1 for a in self.agents 
-                if getattr(a, "is_pedestrian", False) 
-                and getattr(a, "follow_target_id", None) is not None)
+        return sum(
+            1
+            for a in self.agents
+            if getattr(a, "is_pedestrian", False)
+            and getattr(a, "follow_target_id", None) is not None
+        )
 
     def _leaders_remaining(self):
-        return sum(1 for a in self.agents 
-                if getattr(a, "is_pedestrian", False) and getattr(a, "is_leader", False))
+        return sum(
+            1
+            for a in self.agents
+            if getattr(a, "is_pedestrian", False) and getattr(a, "is_leader", False)
+        )
 
     def _diversity_stats(self):
-        vals = lambda attr: [float(getattr(a, attr)) for a in self.agents 
-                            if getattr(a, "is_pedestrian", False) and hasattr(a, attr)]
-        def safe_std(xs): 
+        vals = lambda attr: [
+            float(getattr(a, attr))
+            for a in self.agents
+            if getattr(a, "is_pedestrian", False) and hasattr(a, attr)
+        ]
+
+        def safe_std(xs):
             return float(np.std(xs)) if len(xs) >= 2 else 0.0
+
         return {
             "std_v0_init": safe_std(vals("v0_init")),
-            "std_vmax":    safe_std(vals("vmax")),
-            "std_radius":  safe_std(vals("r")),
-            "std_mass":    safe_std(vals("m")),
-            "std_vis":     safe_std(vals("visibility_radius")),
-            "std_panic0":  safe_std(vals("panic_base")),
+            "std_vmax": safe_std(vals("vmax")),
+            "std_radius": safe_std(vals("r")),
+            "std_mass": safe_std(vals("m")),
+            "std_vis": safe_std(vals("visibility_radius")),
+            "std_panic0": safe_std(vals("panic_base")),
         }
 
     def step(self):
         """Advance the model by one step."""
         self.agents.shuffle_do("step")
 
-        self.exit_counts_step = [c - p for c, p in zip(self.exit_counts, self._prev_exit_counts)]
+        self.exit_counts_step = [
+            c - p for c, p in zip(self.exit_counts, self._prev_exit_counts)
+        ]
         self._prev_exit_counts = self.exit_counts.copy()
-        
+
         # Collect data
         self.datacollector.collect(self)
-        
+
         # Check if simulation should stop:
         # Stop when all non-injured pedestrians have evacuated
         active_pedestrians = [
-            a for a in self.agents 
+            a
+            for a in self.agents
             if getattr(a, "is_pedestrian", False) and not getattr(a, "injured", False)
         ]
-        
+
         if len(active_pedestrians) == 0:
             self.running = False
-        
+
         self.steps += 1
 
     def get_agent_positions(self):
@@ -607,7 +672,7 @@ class EvacuationModel(Model):
         Used by optimizer to update geometry after changing exit locations.
         """
         W, H = self.width, self.height
-        
+
         def subtract_intervals(L, intervals):
             """Return the complementary intervals in [0,L] after removing 'intervals'."""
             intervals = sorted(intervals)
@@ -625,7 +690,7 @@ class EvacuationModel(Model):
 
         # Categorize exits by which wall they're on
         map_int = {"bottom": [], "top": [], "left": [], "right": []}
-        for (x0, y0, x1, y1) in self.exits:
+        for x0, y0, x1, y1 in self.exits:
             if abs(y0) < 1e-6 and abs(y1) < 1e-6:  # bottom
                 map_int["bottom"].append((min(x0, x1), max(x0, x1)))
             elif abs(y0 - H) < 1e-6 and abs(y1 - H) < 1e-6:  # top
@@ -658,25 +723,25 @@ class EvacuationModel(Model):
                 walls.append((W, s, W, e))
 
         self.walls = walls
-        
+
     def _get_preset_exits(self, preset_name):
         """Get predefined exit configurations for Solara visualization."""
         w, h = self.width, self.height
         ew = self.exit_width
-        
+
         presets = {
-            "center_bottom": [(w/2 - ew/2, 0, w/2 + ew/2, 0)],  # Bottom center
-            "center_right": [(w, h/2 - ew/2, w, h/2 + ew/2)],   # Right center
-            "center_left": [(0, h/2 - ew/2, 0, h/2 + ew/2)],    # Left center
+            "center_bottom": [(w / 2 - ew / 2, 0, w / 2 + ew / 2, 0)],  # Bottom center
+            "center_right": [(w, h / 2 - ew / 2, w, h / 2 + ew / 2)],  # Right center
+            "center_left": [(0, h / 2 - ew / 2, 0, h / 2 + ew / 2)],  # Left center
             "two_exits": [
-                (0, h/2 - ew/2, 0, h/2 + ew/2),        # Left center
-                (w, h/2 - ew/2, w, h/2 + ew/2)         # Right center
+                (0, h / 2 - ew / 2, 0, h / 2 + ew / 2),  # Left center
+                (w, h / 2 - ew / 2, w, h / 2 + ew / 2),  # Right center
             ],
             "three_exits": [
-                (w/2 - ew/2, 0, w/2 + ew/2, 0), # Bottom center
-                (w, h/2 - ew/2, w, h/2 + ew/2), # Right center
-                (0, h/2 - ew/2, 0, h/2 + ew/2)  # Left center
-            ]
+                (w / 2 - ew / 2, 0, w / 2 + ew / 2, 0),  # Bottom center
+                (w, h / 2 - ew / 2, w, h / 2 + ew / 2),  # Right center
+                (0, h / 2 - ew / 2, 0, h / 2 + ew / 2),  # Left center
+            ],
         }
-        
-        return presets.get(preset_name, [(w, h/2 - ew/2, w, h/2 + ew/2)])
+
+        return presets.get(preset_name, [(w, h / 2 - ew / 2, w, h / 2 + ew / 2)])

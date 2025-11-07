@@ -1,8 +1,8 @@
 import math
 import numpy as np
-from mesa import Agent
 from simple_agent import SimplePedestrian
 from utils import _norm
+
 
 class ExtendedPedestrian(SimplePedestrian):
     def __init__(
@@ -24,7 +24,9 @@ class ExtendedPedestrian(SimplePedestrian):
         vmax=5.0,
         alpha_imp=0.2,
     ):
-        super().__init__(unique_id, model, pos, v0, tau, radius, mass, smoke_recovery_rate)
+        super().__init__(
+            unique_id, model, pos, v0, tau, radius, mass, smoke_recovery_rate
+        )
 
         # --- extra attributes ---
         self.heading = np.random.uniform(0, 2 * math.pi)
@@ -34,14 +36,20 @@ class ExtendedPedestrian(SimplePedestrian):
         self.exit_id = exit_id
         self.e0 = np.zeros(2)
         self.visibility_radius = visibility_radius
-        
+
         # exit reassignment parameters
-        self.stuck_threshold = 0.01  # minimum movement per step to not be considered stuck
-        self.stuck_counter = 0      # consecutive steps being stuck
-        self.stuck_max_steps = 200   # steps (20 seconds at dt=0.1) before reassigning exit
+        self.stuck_threshold = (
+            0.01  # minimum movement per step to not be considered stuck
+        )
+        self.stuck_counter = 0  # consecutive steps being stuck
+        self.stuck_max_steps = (
+            200  # steps (20 seconds at dt=0.1) before reassigning exit
+        )
         self.injury_check_radius = 2.5  # radius to check for injured agents near exit
         self.min_injured_threshold = 4  # min injured agents to trigger exit change
-        self.last_position = np.array([pos[0], pos[1]])  # track position for stuck detection
+        self.last_position = np.array(
+            [pos[0], pos[1]]
+        )  # track position for stuck detection
         self.exit_reassign_cooldown = 0  # prevent rapid exit switching
         self.exit_reassign_cooldown_max = 100  # 10 seconds cooldown
 
@@ -61,28 +69,29 @@ class ExtendedPedestrian(SimplePedestrian):
 
         self.leader_radius = 15.0
 
-        self.follow_target_id = None   # currently latched leader id (or None)
-        self.follow_timer = 0.0        # seconds left to keep current latch even if leader not seen
-        self.follow_min_time = 1.0     # minimum latch duration (seconds)
+        self.follow_target_id = None  # currently latched leader id (or None)
+        self.follow_timer = (
+            0.0  # seconds left to keep current latch even if leader not seen
+        )
+        self.follow_min_time = 1.0  # minimum latch duration (seconds)
         self.follow_bias = 0.35
         self.last_follow_dir = np.zeros(2)
 
-    
     # --- override hook methods from SimplePedestrian ---
     def pre_physics_update(self):
         """Update desired panic, check dynamic exit reassignment, direction, impatience and desired speed before each step."""
         self.update_panic()
-        
+
         # Check if leader should reassign exit (only for leaders)
-        if hasattr(self.model, 'exits') and len(self.model.exits) > 1:
+        if hasattr(self.model, "exits") and len(self.model.exits) > 1:
 
             if self.is_leader and self.exit_reassign_cooldown <= 0:
                 self.check_and_reassign_exit()
-            
+
             # Update cooldown
             if self.exit_reassign_cooldown > 0:
                 self.exit_reassign_cooldown -= 1
-            
+
         gx, gy = self.nearest_exit_point()
         self.e0 = self.desired_direction(gx, gy)
         self.update_impatience_and_speed()
@@ -117,7 +126,9 @@ class ExtendedPedestrian(SimplePedestrian):
                 self.follow_timer = max(self.follow_timer, self.follow_min_time)
                 self.last_follow_dir = leader_dir
                 leader_dir_for_blend = leader_dir
-            elif self.follow_timer > 0.0 and np.linalg.norm(self.last_follow_dir) > 1e-12:
+            elif (
+                self.follow_timer > 0.0 and np.linalg.norm(self.last_follow_dir) > 1e-12
+            ):
                 # leader not visible now, but latch active -> keep last known leader dir
                 leader_dir_for_blend = self.last_follow_dir
             else:
@@ -236,8 +247,14 @@ class ExtendedPedestrian(SimplePedestrian):
         R = float(getattr(self, "leader_radius", 15.0))
         best_dir, best_id, best_d = None, None, float("inf")
 
-        for n in self.model.space.get_neighbors((self.x, self.y), R, include_center=False):
-            if n is self or not getattr(n, "is_pedestrian", False) or not getattr(n, "is_leader", False):
+        for n in self.model.space.get_neighbors(
+            (self.x, self.y), R, include_center=False
+        ):
+            if (
+                n is self
+                or not getattr(n, "is_pedestrian", False)
+                or not getattr(n, "is_leader", False)
+            ):
                 continue
             if getattr(n, "injured", False):
                 continue
@@ -299,81 +316,86 @@ class ExtendedPedestrian(SimplePedestrian):
 
         # Check if stuck - not moving between updates
         movement = np.linalg.norm(current_pos - self.last_position)
-        
+
         if movement < self.stuck_threshold:
             self.stuck_counter += 1
         else:
             self.stuck_counter = 0  # reset if moving normally
-            
+
         self.last_position = current_pos.copy()
-        
+
         # Get current exit point
         gx, gy = self.nearest_exit_point()
-        
+
         # Check for injured agents near current exit
         injured_near_exit = self.count_injured_near_exit(gx, gy)
         # Decide if we should reassign
         should_reassign = False
         reason = ""
-        
+
         if self.stuck_counter >= self.stuck_max_steps:
             should_reassign = True
             reason = f"stuck for {self.stuck_counter} steps"
-            
+
         if injured_near_exit >= self.min_injured_threshold:
             should_reassign = True
             reason = f"{injured_near_exit} injured agents near exit"
-            
+
         if should_reassign:
             new_exit_id = self.find_alternative_exit()
             if new_exit_id != self.exit_id and new_exit_id is not None:
                 old_exit = self.exit_id
                 self.exit_id = new_exit_id
                 self.stuck_counter = 0  # reset stuck counter
-                self.exit_reassign_cooldown = self.exit_reassign_cooldown_max  # set cooldown
-                
+                self.exit_reassign_cooldown = (
+                    self.exit_reassign_cooldown_max
+                )  # set cooldown
+
                 # print for debugging
-                #print(f"Leader {self.unique_id} switched from exit {old_exit} to {new_exit_id}: {reason}")
+                # print(f"Leader {self.unique_id} switched from exit {old_exit} to {new_exit_id}: {reason}")
 
     def count_injured_near_exit(self, exit_x, exit_y):
         """Count injured agents within injury_check_radius of the given exit point."""
         manual_count = 0
-        
-        all_agents = [agent for agent in self.model.agents 
-                    if hasattr(agent, 'is_pedestrian') and agent.is_pedestrian]
-        
+
+        all_agents = [
+            agent
+            for agent in self.model.agents
+            if hasattr(agent, "is_pedestrian") and agent.is_pedestrian
+        ]
+
         for agent in all_agents:
             distance = np.linalg.norm([agent.x - exit_x, agent.y - exit_y])
             if distance <= self.injury_check_radius:
-                if hasattr(agent, 'injured') and agent.injured:
+                if hasattr(agent, "injured") and agent.injured:
                     manual_count += 1
-        
+
         injured_count = manual_count
-        
+
         # Debug: print only when injuries are found
         # if injured_count > 0:
         #     print(f"Leader {self.unique_id}: Found {injured_count} injured agents near exit ({exit_x:.1f}, {exit_y:.1f})")
-    
+
         return injured_count
-    
+
     def find_alternative_exit(self):
         """
         Find a different exit that hasn't been tried recently.
         Simply cycles through available exits, avoiding the current one.
         """
-        if not hasattr(self.model, 'exits') or len(self.model.exits) <= 1:
+        if not hasattr(self.model, "exits") or len(self.model.exits) <= 1:
             return self.exit_id  # no alternatives
-            
+
         # Keep track of tried exits
-        if not hasattr(self, 'tried_exits'):
+        if not hasattr(self, "tried_exits"):
             self.tried_exits = set([self.exit_id])
-        
+
         # Find next untried exit
         for i in range(len(self.model.exits)):
             if i != self.exit_id and i not in self.tried_exits:
                 self.tried_exits.add(i)
                 return i
-        
+
         # If all exits have been tried, reset and pick the next one
         self.tried_exits = set([self.exit_id])
         next_exit = (self.exit_id + 1) % len(self.model.exits)

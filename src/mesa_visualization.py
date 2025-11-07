@@ -6,6 +6,7 @@ from matplotlib.figure import Figure
 from model import EvacuationModel
 from matplotlib.patches import Circle
 
+
 @solara.component
 def RoomSpace(model):
     update_counter.get()
@@ -14,7 +15,10 @@ def RoomSpace(model):
 
     # 1) Draw agents manually as circles with physical radius
     # Try to get an iterable of agents in a robust way
-    if hasattr(model, "schedule") and getattr(model.schedule, "agents", None) is not None:
+    if (
+        hasattr(model, "schedule")
+        and getattr(model.schedule, "agents", None) is not None
+    ):
         agents_iter = list(model.schedule.agents)
     elif hasattr(model, "agents"):
         agents_iter = list(model.agents)
@@ -41,8 +45,16 @@ def RoomSpace(model):
             alpha = 0.95
             z = 3.5
             size = max(30, r)
-            ax.scatter([x], [y], s=size, marker='x', color='black',
-                       linewidths=1.2, zorder=5, alpha=0.95)
+            ax.scatter(
+                [x],
+                [y],
+                s=size,
+                marker="x",
+                color="black",
+                linewidths=1.2,
+                zorder=5,
+                alpha=0.95,
+            )
         else:
             face = "tab:orange" if getattr(agent, "is_leader", False) else "tab:blue"
             edge = "black"
@@ -50,14 +62,21 @@ def RoomSpace(model):
             z = 3.5
 
         # Create circle in data coordinates (radius in same units as axis)
-        circ = Circle((x, y), r, facecolor=face, edgecolor=edge,
-                      linewidth=0.25, alpha=alpha, zorder=z)
+        circ = Circle(
+            (x, y),
+            r,
+            facecolor=face,
+            edgecolor=edge,
+            linewidth=0.25,
+            alpha=alpha,
+            zorder=z,
+        )
         ax.add_patch(circ)
 
         # Add small marker for orientation or velocity (tiny line)
         vx = getattr(agent, "vx", 0.0)
         vy = getattr(agent, "vy", 0.0)
-        speed = (vx ** 2 + vy ** 2) ** 0.5
+        speed = (vx**2 + vy**2) ** 0.5
         if speed > 1e-6:
             # draw a short line showing heading, length scaled with radius
             hx = x + (vx / speed) * r * 1.6
@@ -87,10 +106,10 @@ def RoomSpace(model):
         )
         ax.add_patch(core)
 
-    for (x0, y0, x1, y1) in getattr(model, "walls", []):
+    for x0, y0, x1, y1 in getattr(model, "walls", []):
         ax.plot([x0, x1], [y0, y1], color="black", linewidth=3, zorder=4, alpha=0.9)
 
-    for (x0, y0, x1, y1) in getattr(model, "exits", []):
+    for x0, y0, x1, y1 in getattr(model, "exits", []):
         ax.plot([x0, x1], [y0, y1], color="green", linewidth=6, zorder=4, alpha=0.9)
 
     W, H = getattr(model, "width", None), getattr(model, "height", None)
@@ -103,24 +122,94 @@ def RoomSpace(model):
 
     return solara.FigureMatplotlib(fig, format="png", bbox_inches="tight")
 
+
 agents_plot, _ = make_mpl_plot_component("Agents")
-speed_plot,  _ = make_mpl_plot_component("Average_Speed")
+speed_plot, _ = make_mpl_plot_component("Average_Speed")
 flow_plot, _ = make_mpl_plot_component("Exit_Flow_Total", page=1)
 
 model_params = {
-    "dt":         {"type": "SliderFloat", "value": 0.10, "min": 0.01,"max": 0.10,"step":0.005,"label": "Δt"},
-    "n_agents":   {"type": "SliderInt",   "value": 50,   "min": 5,   "max": 200, "step": 5,   "label": "Agents"},
-    "num_leaders":{"type": "SliderInt",   "value": 10,    "min": 0,   "max": 10,  "step": 1,   "label": "Leaders"},
-    "num_exits":  {"type": "SliderInt",   "value": 1,    "min": 1,   "max": 3,   "step": 1,   "label": "Exits"},
-    "width":      {"type": "SliderFloat", "value": 15.0, "min": 10., "max": 40., "step": 1.,  "label": "Room width"},
-    "height":     {"type": "SliderFloat", "value": 15.0, "min":  8., "max": 30., "step": 1.,  "label": "Room height"},
-    "exit_width": {"type": "SliderFloat", "value": 2.0,  "min": 0.4, "max": 3.0, "step": 0.1, "label": "Exit width"},
-    "agent_type": {"type": "Select", "value": "extended", "values": ["simple", "extended"], "label": "Agent Type"},
-    "integration_method": {"type": "Select", "value": "euler", "values": ["euler", "rk4"], "label": "Integration Method"},
+    "dt": {
+        "type": "SliderFloat",
+        "value": 0.10,
+        "min": 0.01,
+        "max": 0.10,
+        "step": 0.005,
+        "label": "Δt",
+    },
+    "n_agents": {
+        "type": "SliderInt",
+        "value": 50,
+        "min": 5,
+        "max": 200,
+        "step": 5,
+        "label": "Agents",
+    },
+    "num_leaders": {
+        "type": "SliderInt",
+        "value": 10,
+        "min": 0,
+        "max": 10,
+        "step": 1,
+        "label": "Leaders",
+    },
+    "num_exits": {
+        "type": "SliderInt",
+        "value": 1,
+        "min": 1,
+        "max": 3,
+        "step": 1,
+        "label": "Exits",
+    },
+    "width": {
+        "type": "SliderFloat",
+        "value": 15.0,
+        "min": 10.0,
+        "max": 40.0,
+        "step": 1.0,
+        "label": "Room width",
+    },
+    "height": {
+        "type": "SliderFloat",
+        "value": 15.0,
+        "min": 8.0,
+        "max": 30.0,
+        "step": 1.0,
+        "label": "Room height",
+    },
+    "exit_width": {
+        "type": "SliderFloat",
+        "value": 2.0,
+        "min": 0.4,
+        "max": 3.0,
+        "step": 0.1,
+        "label": "Exit width",
+    },
+    "agent_type": {
+        "type": "Select",
+        "value": "extended",
+        "values": ["simple", "extended"],
+        "label": "Agent Type",
+    },
+    "integration_method": {
+        "type": "Select",
+        "value": "euler",
+        "values": ["euler", "rk4"],
+        "label": "Integration Method",
+    },
     "enable_fire": {"type": "Checkbox", "value": False, "label": "Enable Fire"},
-    "exit_preset": {"type": "Select", "value": "three_exits", 
-                   "values": ["random", "center_bottom", "center_right", "center_left", "two_exits", "three_exits"], 
-                   "label": "Exit Configuration"},
+    "exit_preset": {
+        "type": "Select",
+        "value": "three_exits",
+        "values": [
+            "random",
+            "center_bottom",
+            "center_right",
+            "center_left",
+            "two_exits",
+            "three_exits",
+        ],
+        "label": "Exit Configuration",
+    },
 }
 
 viz = SolaraViz(

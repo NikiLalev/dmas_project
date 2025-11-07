@@ -1,6 +1,6 @@
 import math
-import numpy as np
 from mesa import Agent
+
 
 class StaticFire(Agent):
     """
@@ -9,19 +9,20 @@ class StaticFire(Agent):
     - radius of the fire (radius)
     - acts as an obstacle
     """
+
     def __init__(self, model, pos, radius=0.5):
 
         super().__init__(model)
         self.x, self.y = pos
         self.vx, self.vy = 0.0, 0.0
         self.is_fire = True
-        self.traversable = False    # cannot be crossed
-        self.r = radius        # radius (m)
-        self.color = "red"          # color for visualisation
+        self.traversable = False  # cannot be crossed
+        self.r = radius  # radius (m)
+        self.color = "red"  # color for visualisation
 
     def get_position(self):
         return (self.x, self.y)
-    
+
     def step(self):
         pass
 
@@ -33,27 +34,35 @@ class DynamicFire(Agent):
     - fire radius
     - creates a surrounding smoke area that is traversable
     """
-    def __init__(self, model, pos, initial_fire_radius=0.5, initial_smoke_radius=0.6, 
-                 smoke_growth_rate=0.01, smoke_density=0.7):
+
+    def __init__(
+        self,
+        model,
+        pos,
+        initial_fire_radius=0.5,
+        initial_smoke_radius=0.6,
+        smoke_growth_rate=0.01,
+        smoke_density=0.7,
+    ):
 
         super().__init__(model)
         self.x, self.y = pos
         self.vx, self.vy = 0.0, 0.0
         self.is_fire = True
-        self.r = initial_fire_radius      # fire radius (m)
-        self.traversable = False               # cannot be crossed
-        self.color = "red"                     # color for visualisation
+        self.r = initial_fire_radius  # fire radius (m)
+        self.traversable = False  # cannot be crossed
+        self.color = "red"  # color for visualisation
 
-        self.r_smoke = initial_smoke_radius    # initial smoke radius
+        self.r_smoke = initial_smoke_radius  # initial smoke radius
         self.smoke_growth_rate = smoke_growth_rate
-        self.smoke_traversable = True          # can be crossed
-        self.smoke_density = smoke_density     # for smoke exposure
-        self.smoke_color = "gray"              # color for visualisation
+        self.smoke_traversable = True  # can be crossed
+        self.smoke_density = smoke_density  # for smoke exposure
+        self.smoke_color = "gray"  # color for visualisation
 
     def get_position(self):
         return (self.x, self.y)
-    
-    def step(self): 
+
+    def step(self):
         self.r_smoke += self.smoke_growth_rate
 
     def is_inside_fire(self, pos, agent_radius=0.0):
@@ -63,9 +72,9 @@ class DynamicFire(Agent):
         """
         dx = pos[0] - self.x
         dy = pos[1] - self.y
-        dist = math.sqrt(dx*dx + dy*dy)
+        dist = math.sqrt(dx * dx + dy * dy)
         return dist <= (self.r + agent_radius)
-    
+
     def is_inside_smoke(self, pos, agent_radius=0.0):
         """
         Check if a given position is inside or touching the smoke area.
@@ -73,5 +82,5 @@ class DynamicFire(Agent):
         """
         dx = pos[0] - self.x
         dy = pos[1] - self.y
-        dist = math.sqrt(dx*dx + dy*dy)
+        dist = math.sqrt(dx * dx + dy * dy)
         return dist <= (self.r_smoke + agent_radius)
