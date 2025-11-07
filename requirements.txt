@@ -1,27 +1,4 @@
-﻿# Python 3.12.10
-# DMAS Evacuation Simulation Project
-
-# Core simulation framework
-Mesa==3.3.0
-
-# Scientific computing
-numpy==2.3.2
-pandas==2.3.2
-scipy==1.16.1
-
-# Visualization
-matplotlib==3.10.6
-solara==1.51.1
-altair==5.5.0
-uvicorn==0.24.0
-networkx==3.4.2
-
-# Jupyter support
-ipykernel==6.30.1
-ipython==9.5.0
-jupyter_core==5.8.1
-nbformat==5.10.4
-
-# Optional: Enhanced features
-ipywidgets==8.1.7
-tqdm==4.67.1
+matplotlib==3.10.7
+mesa==3.3.1
+numpy==2.3.4
+solara==1.54.0

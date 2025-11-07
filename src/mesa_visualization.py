@@ -1,7 +1,5 @@
 from mesa.visualization import SolaraViz
 from mesa.visualization.components.matplotlib_components import make_mpl_plot_component
-from mesa.visualization.mpl_space_drawing import draw_space
-from mesa.visualization.components import AgentPortrayalStyle
 from mesa.visualization.utils import update_counter
 import solara
 from matplotlib.figure import Figure
@@ -66,21 +64,18 @@ def RoomSpace(model):
             hy = y + (vy / speed) * r * 1.6
             ax.plot([x, hx], [y, hy], color="black", linewidth=0.6, zorder=z + 0.1)
 
-    # 2) LAYER: fumo + fuoco (sotto agli agenti)
     fire = getattr(model, "fire", None)
     if fire is not None:
-        # fumo (semi-trasparente)
         smoke = Circle(
             (float(fire.x), float(fire.y)),
             float(fire.r_smoke),
             facecolor="gray",
             edgecolor="none",
             alpha=0.5,
-            zorder=0,        # sotto gli agenti
+            zorder=0,
         )
         ax.add_patch(smoke)
 
-        # fuoco (core rosso)
         core = Circle(
             (float(fire.x), float(fire.y)),
             float(fire.r),
@@ -88,18 +83,16 @@ def RoomSpace(model):
             edgecolor="black",
             linewidth=0.5,
             alpha=0.85,
-            zorder=1,        # ancora sotto gli agenti (che sono ~2/3)
+            zorder=1,
         )
         ax.add_patch(core)
 
-    # 3) Strutture
     for (x0, y0, x1, y1) in getattr(model, "walls", []):
         ax.plot([x0, x1], [y0, y1], color="black", linewidth=3, zorder=4, alpha=0.9)
 
     for (x0, y0, x1, y1) in getattr(model, "exits", []):
         ax.plot([x0, x1], [y0, y1], color="green", linewidth=6, zorder=4, alpha=0.9)
 
-    # 4) limiti/asse
     W, H = getattr(model, "width", None), getattr(model, "height", None)
     if W and H:
         ax.set_xlim(-0.5, W + 0.5)
